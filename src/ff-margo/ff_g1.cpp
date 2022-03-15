@@ -102,6 +102,12 @@ public:
 
 int main(int argc, char** argv)
 {
+
+    if(argc != 3) {
+        std::cout << "Usage: " << argv[0] << " <stream len> <remote addr>\n";
+        return 1;
+    }
+
     firstStage  first(std::stol(argv[1]));
     secondStage second(argv[2]);
     ff_Pipe<float> pipe(first, second);

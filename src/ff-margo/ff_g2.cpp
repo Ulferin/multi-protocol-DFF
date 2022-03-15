@@ -41,6 +41,10 @@ using namespace ff;
 void ff_rpc(hg_handle_t handle);
 hg_return_t _handler_for_ff_rpc(hg_handle_t handle);
 
+static void wait_fin(void* arg) {
+    margo_instance_id* mid = (margo_instance_id*)arg;
+    margo_wait_for_finalize(*mid);
+}
 
 static void finalize_xstream_cb(void* data) {
     ABT_xstream xstream = (ABT_xstream)data;
@@ -48,77 +52,81 @@ static void finalize_xstream_cb(void* data) {
     ABT_xstream_free(&xstream);
 }
 
-
 // Margo communicator node (server)
 struct firstStage: ff_node_t<float> {
-    hg_return_t       hret;
-    margo_instance_id mid1, mid2;
-    hg_id_t           id, id2;
-    hg_addr_t         addr_self;
-    char              addr_self_string1[128];
-    char              addr_self_string2[128];
-    hg_size_t         addr_self_string_sz = 128;
+    hg_return_t         hret;
+    margo_instance_id   mid1, mid2;
+    hg_id_t             id, id2;
+    hg_addr_t           addr_self;
+    char                addr_self_string1[128];
+    char                addr_self_string2[128];
+    hg_size_t           addr_self_string_sz = 128;
 
-    char*             a1;
-    char*             a2;
+    ABT_pool            pool_e1, pool_e2, pool_wait;
+    ABT_xstream         xstream_e1, xstream_e2, xstream_wait;
 
-    firstStage(char* addr1, char* addr2) : a1{addr1}, a2{addr2} {}
+    char*               a1;
+    char*               a2;
+
+    int                 num_rpc1, num_rpc2;
+
+    struct margo_init_info args_e1, args_e2;
+
+    firstStage(char* addr1, char* addr2) : a1{addr1}, a2{addr2}, num_rpc1{0}, num_rpc2{0} {}
 
     friend hg_return_t _handler_for_ff_rpc(hg_handle_t h);
     friend void ff_rpc(hg_handle_t handle);
 
     int svc_init() {
+        margo_set_environment(NULL);
+        ABT_init(0, NULL);
+
+        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE, &pool_e1);
+        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE, &pool_e2);
+        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1, ABT_SCHED_CONFIG_NULL, &xstream_e1);
+        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e2, ABT_SCHED_CONFIG_NULL, &xstream_e2);
+
+        args_e1 = {
+            .json_config   = NULL,      /* const char*          */
+            .progress_pool = pool_e1, /* ABT_pool             */
+            .rpc_pool      = pool_e1, /* ABT_pool             */
+            .hg_class      = NULL,      /* hg_class_t*          */
+            .hg_context    = NULL,      /* hg_context_t*        */
+            .hg_init_info  = NULL       /* struct hg_init_info* */
+        };
+
+        args_e2 = {
+            .json_config   = NULL,      /* const char*          */
+            .progress_pool = pool_e2, /* ABT_pool             */
+            .rpc_pool      = pool_e2, /* ABT_pool             */
+            .hg_class      = NULL,      /* hg_class_t*          */
+            .hg_context    = NULL,      /* hg_context_t*        */
+            .hg_init_info  = NULL       /* struct hg_init_info* */
+        };
 
         /***************************************/
-        mid1 = margo_init(a1, MARGO_SERVER_MODE, 1, -1);
+        mid1 = margo_init_ext(a1, MARGO_SERVER_MODE, &args_e1);
         if (mid1 == MARGO_INSTANCE_NULL) {
             fprintf(stderr, "Error: margo_init()\n");
             return (-1);
         }
-        margo_set_log_level(mid1, MARGO_LOG_INFO);
+        margo_set_log_level(mid1, MARGO_LOG_TRACE);
+        char* config = margo_get_config(mid1);
+        margo_info(mid1, "%s", config);
+        free(config);
 
-        mid2 = margo_init(a2, MARGO_SERVER_MODE, 1, -1);
+        mid2 = margo_init_ext(a2, MARGO_SERVER_MODE, &args_e2);
         if (mid2 == MARGO_INSTANCE_NULL) {
             fprintf(stderr, "Error: margo_init()\n");
             return (-1);
         }
-        margo_set_log_level(mid2, MARGO_LOG_INFO);
-
-        /* figure out first listening addr */
-        hret = margo_addr_self(mid1, &addr_self);
-        if (hret != HG_SUCCESS) {
-            fprintf(stderr, "Error: margo_addr_self()\n");
-            margo_finalize(mid1);
-            return (-1);
-        }
-        addr_self_string_sz = 128;
-        hret = margo_addr_to_string(mid1, addr_self_string1, &addr_self_string_sz,
-                                    addr_self);
-        if (hret != HG_SUCCESS) {
-            fprintf(stderr, "Error: margo_addr_to_string()\n");
-            margo_addr_free(mid1, addr_self);
-            margo_finalize(mid1);
-            return (-1);
-        }
-        margo_addr_free(mid1, addr_self);
-
-        /* figure out second listening addr */
-        hret = margo_addr_self(mid2, &addr_self);
-        if (hret != HG_SUCCESS) {
-            fprintf(stderr, "Error: margo_addr_self()\n");
-            margo_finalize(mid2);
-            return (-1);
-        }
-        addr_self_string_sz = 128;
-        hret = margo_addr_to_string(mid2, addr_self_string2, &addr_self_string_sz,
-                                    addr_self);
-        if (hret != HG_SUCCESS) {
-            fprintf(stderr, "Error: margo_addr_to_string()\n");
-            margo_addr_free(mid2, addr_self);
-            margo_finalize(mid2);
-            return (-1);
-        }
-        margo_addr_free(mid2, addr_self);
+        margo_set_log_level(mid2, MARGO_LOG_TRACE);
+        char* config1 = margo_get_config(mid2);
+        margo_info(mid2, "%s", config1);
+        free(config1);
+        
+        get_self_addr(mid1, addr_self_string1);
+        get_self_addr(mid1, addr_self_string2);
         fprintf(stderr, "# accepting RPCs on address \"%s\" and \"%s\"\n",
                 addr_self_string1, addr_self_string2);
 
@@ -128,22 +136,29 @@ struct firstStage: ff_node_t<float> {
         margo_info(mid1, "id: %d\n", id);
         margo_register_data(mid1, id, this, NULL);
 
-        id = MARGO_REGISTER_PROVIDER(mid2, "ff_rpc", ff_rpc_in_t, void, ff_rpc, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        id2 = MARGO_REGISTER_PROVIDER(mid2, "ff_rpc", ff_rpc_in_t, void, ff_rpc, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
         margo_registered_disable_response(mid2, id2, HG_TRUE);
+        margo_info(mid2, "id: %d\n", id2);
         margo_register_data(mid2, id2, this, NULL);
 
         return 0;
     }
 
-    float* svc(float * task) { 
-        /* NOTE: there isn't anything else for the server to do at this point
-        * except wait for itself to be shut down.  The
-        * margo_wait_for_finalize() call here yields to let Margo drive
-        * progress until that happens.
-        */
-        margo_wait_for_finalize(mid2);
-        margo_wait_for_finalize(mid1);
+    float* svc(float * task) {
+        ABT_thread t_e1, t_e2;
+        ABT_thread_create(pool_e1, wait_fin, &mid1, NULL, &t_e1);
+        ABT_thread_create(pool_e2, wait_fin, &mid2, NULL, &t_e2);
 
+        finalize_xstream_cb(xstream_e1);
+        finalize_xstream_cb(xstream_e2);
+        // ABT_xstream_join(xstream_e1);
+        ABT_pool_free(&pool_e1);
+        // ABT_xstream_free(&xstream_e1);
+
+        // ABT_xstream_join(xstream_e2);
+        ABT_pool_free(&pool_e2);
+        // ABT_xstream_free(&xstream_e2);
+        ABT_finalize();
         return EOS;
     }
 };
@@ -217,24 +232,25 @@ struct thirdStage: ff_node_t<float> {
     }
 };
 
-firstStage* first;
 int main(int argc, char** argv)
 {
     if (argc != 4) {
-        fprintf(stderr, "Usage: ./server <listen_addr1> <listen_addr2> <third address>\n");
+        fprintf(stderr, "Usage: ./server <listen_addr1> <listen_addr2> <contact address>\n");
         fprintf(stderr, "Example: ./server na+sm:// ofi+tcp:// ofi+sockets://\n");
         return (-1);
     }
+    margo_set_environment(NULL);
+    margo_set_global_log_level(MARGO_LOG_TRACE);
 
-    first = new firstStage(argv[1], argv[2]);
+    firstStage* first = new firstStage(argv[1], argv[2]);
     secondStage second;
-    thirdStage third(argv[3]);
+    // thirdStage third(argv[3]);
     ff_Pipe<float> pipe(first, second);
     if (pipe.run_and_wait_end()<0) {
         error("running pipe");
         return -1;
     }
-    
+
     return (0);
 }
 
@@ -259,13 +275,15 @@ void ff_rpc(hg_handle_t handle)
 
     firstStage* my_first = (firstStage*)margo_registered_data(mid, info->id);
 
-    first->ff_send_out(new float(*in.task));
+    my_first->ff_send_out(new float(*in.task));
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
-    // margo_finalize(mid);
+    
+    my_first->num_rpc1++;
+    if(my_first->num_rpc1 >= 20)
+        margo_finalize(mid);
 
     return;
 }
 DEFINE_MARGO_RPC_HANDLER(ff_rpc)
-
