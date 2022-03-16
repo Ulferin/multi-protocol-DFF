@@ -51,7 +51,7 @@ struct secondStage: ff_node_t<float> {
     // secondStage(){}
     float* svc(float *task) {
         std::cout << "Received: " << *task << "\n"; 
-
+        std::this_thread::sleep_for (std::chrono::seconds(1));
         return task;
     }
 };

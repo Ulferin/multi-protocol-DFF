@@ -8,12 +8,19 @@
 
 using namespace ff;
 
+void ff_rpc(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc);
+
+void ff_rpc_shutdown(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
+
+
 
 // Margo communicator node (server)
 struct receiverStage: ff_node_t<float> {
     hg_return_t         hret;
     margo_instance_id   mid1, mid2;
-    hg_id_t             id, id2;
+    hg_id_t             id, id2, ff_shutdown_id1, ff_shutdown_id2;
     hg_addr_t           addr_self;
     char                addr_self_string1[128];
     char                addr_self_string2[128];
@@ -87,10 +94,16 @@ struct receiverStage: ff_node_t<float> {
         margo_info(mid1, "id: %d\n", id);
         margo_register_data(mid1, id, this, NULL);
 
+        ff_shutdown_id1 = MARGO_REGISTER_PROVIDER(mid1, "ff_rpc_shutdown", void, void, ff_rpc_shutdown, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        margo_registered_disable_response(mid1, ff_shutdown_id1, HG_TRUE);
+
         id2 = MARGO_REGISTER_PROVIDER(mid2, "ff_rpc", ff_rpc_in_t, void, ff_rpc, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
         margo_registered_disable_response(mid2, id2, HG_TRUE);
         margo_info(mid2, "id: %d\n", id2);
         margo_register_data(mid2, id2, this, NULL);
+
+        ff_shutdown_id2 = MARGO_REGISTER_PROVIDER(mid2, "ff_rpc_shutdown", void, void, ff_rpc_shutdown, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        margo_registered_disable_response(mid2, ff_shutdown_id2, HG_TRUE);
 
     }
 
@@ -117,7 +130,7 @@ private:
     char*                   addr;
     margo_instance_id       mid;
     hg_addr_t               svr_addr;
-    hg_id_t                 ff_rpc_id;
+    hg_id_t                 ff_rpc_id, ff_shutdown_id;
     ABT_pool                pool_e1;
     ABT_xstream             xstream_e1;
     struct margo_init_info  args_e1;
@@ -167,6 +180,9 @@ public:
         ff_rpc_id = MARGO_REGISTER(mid, "ff_rpc", ff_rpc_in_t, void, NULL);
         margo_registered_disable_response(mid, ff_rpc_id, HG_TRUE);
         margo_addr_lookup(mid, addr, &svr_addr);
+
+        ff_shutdown_id = MARGO_REGISTER_PROVIDER(mid, "ff_rpc_shutdown", void, void, NULL, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        margo_registered_disable_response(mid, ff_shutdown_id, HG_TRUE);
     }
 
     float* svc(float * task) {
@@ -175,10 +191,6 @@ public:
         ff_rpc_in_t in;
         hg_return_t ret;
         hg_handle_t h;
-
-        if(task == EOS)
-            // TODO: here add a call to a finalization RPC
-            printf("Got EOS\n");
 
         in.task = new float(*task);
         delete task;
@@ -193,12 +205,19 @@ public:
     }
 
     void svc_end() {
-        margo_finalize(mid);
         std::cout << "Finalizing...\n";
+        
+        hg_handle_t h;
+        printf("Got EOS\n");
+        margo_create(mid, svr_addr, ff_shutdown_id, &h);
+        margo_forward(h, NULL);
+        margo_destroy(h);
+        
+        margo_finalize(mid);
+        finalize_xstream_cb(xstream_e1);
         ABT_xstream_state state;
         ABT_xstream_get_state(xstream_e1, &state);
         std::cout << "State: " << state << "\n";
-        finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
     }
 };
@@ -237,3 +256,22 @@ void ff_rpc(hg_handle_t handle)
     return;
 }
 DEFINE_MARGO_RPC_HANDLER(ff_rpc)
+
+
+void ff_rpc_shutdown(hg_handle_t handle)
+{
+    hg_return_t       hret;
+    margo_instance_id mid;
+
+    printf("Got RPC request to shutdown\n");
+
+    /* get handle info and margo instance */
+    mid = margo_hg_handle_get_instance(handle);
+    assert(mid != MARGO_INSTANCE_NULL);
+
+    margo_destroy(handle);
+    margo_finalize(mid);
+
+    return;
+}
+DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown)

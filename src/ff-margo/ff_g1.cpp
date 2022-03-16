@@ -32,6 +32,7 @@
 #include <mercury.h>
 #include <abt.h>
 #include <margo.h>
+#include <thread>
 
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>

@@ -15,9 +15,6 @@ typedef struct {
     float*   task;
 } ff_rpc_in_t;
 
-void ff_rpc(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc);
-
 hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
     hg_return_t ret = HG_SUCCESS;
     ff_rpc_in_t* struct_data = (ff_rpc_in_t*) data;
