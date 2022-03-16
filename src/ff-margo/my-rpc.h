@@ -15,6 +15,9 @@ typedef struct {
     float*   task;
 } ff_rpc_in_t;
 
+void ff_rpc(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc);
+
 hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
     hg_return_t ret = HG_SUCCESS;
     ff_rpc_in_t* struct_data = (ff_rpc_in_t*) data;
@@ -48,6 +51,19 @@ void get_self_addr(margo_instance_id mid, char* addr_str) {
         margo_finalize(mid);
     }
     margo_addr_free(mid, addr_self);
+}
+
+static void wait_fin(void* arg) {
+    margo_instance_id* mid = (margo_instance_id*)arg;
+    margo_wait_for_finalize(*mid);
+}
+
+static void finalize_xstream_cb(void* data) {
+    ABT_xstream xstream = (ABT_xstream)data;
+    printf("Joining...\n");
+    ABT_xstream_join(xstream);
+    printf("Freeing...\n");
+    ABT_xstream_free(&xstream);
 }
 
 #endif /* __MY_RPC */

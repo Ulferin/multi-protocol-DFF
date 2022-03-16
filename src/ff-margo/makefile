@@ -13,13 +13,13 @@ TARGETS = ff_g1.out ff_g2.out ff_g3.out
 
 all: $(TARGETS)
 
-ff_g1.out: ff_g1.cpp my-rpc.h
+ff_g1.out: ff_g1.cpp my-rpc.h ff_comm.hpp
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
 
-ff_g2.out: ff_g2.cpp my-rpc.h
+ff_g2.out: ff_g2.cpp my-rpc.h ff_comm.hpp
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
 
-ff_g3.out: ff_g3.cpp my-rpc.h
+ff_g3.out: ff_g3.cpp my-rpc.h ff_comm.hpp
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
 
 clean:
