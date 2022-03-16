@@ -1,7 +1,26 @@
-/*
- * (C) 2015 The University of Chicago
- *
- * See COPYRIGHT in top-level directory.
+/**
+ * @file ff_g1.cpp
+ * @author Federico Finocchio
+ * @brief First group for testing Margo library as a communication layer in FF.
+ * The first group (G1) is composed as follow:
+ *  ___________             ___________             ___________
+ * |           |           |           |           |           |
+ * | S1 --> S2 |--remote-->| ff_g2.out |--remote-->| ff_g3.out |
+ * |___________|           |___________|           |___________|
+ *      G1                       G2                      G3
+ * 
+ * Remote connections are handled via Margo RPC calls and the internal
+ * stage connections are usual FF shared memory connections.
+ * 
+ * The pipeline stages are FF nodes, (S1) represents the stream (endo-stream)
+ * generator, which forwards task to (S2). (S2), in turns, issues RPC calls to
+ * the G2 group. G2 may be using multiple endpoints to handle the requests, so
+ * the address must be specified when initializing (S2).
+ * 
+ * @date 2022-03-16
+ * 
+ * @copyright Copyright (c) 2022
+ * 
  */
 
 #include <math.h>
