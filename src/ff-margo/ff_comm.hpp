@@ -136,57 +136,15 @@ private:
     hg_id_t                 ff_rpc_id, ff_shutdown_id;
     ABT_pool                pool_e1;
     ABT_xstream             xstream_e1;
-    struct margo_init_info  args_e1;
 
 public:
     senderStage(char* addr) : addr{addr}, svr_addr{HG_ADDR_NULL} {
-        int                    i;
-        int                    ret;
-        hg_return_t            hret;
-        hg_handle_t            handle;
-        char*                  proto;
-        char*                  colon;
-
-        
-        /* initialize Mercury using the transport portion of the destination
-        * address (i.e., the part before the first : character if present)
-        */
-        proto = strdup(addr);
-        assert(proto);
-        colon = strchr(proto, ':');
-        if (colon) *colon = '\0';
-
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE, &pool_e1);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1, ABT_SCHED_CONFIG_NULL, &xstream_e1);
 
-        args_e1 = {
-            .json_config   = NULL,      /* const char*          */
-            .progress_pool = pool_e1, /* ABT_pool             */
-            .rpc_pool      = pool_e1, /* ABT_pool             */
-            .hg_class      = NULL,      /* hg_class_t*          */
-            .hg_context    = NULL,      /* hg_context_t*        */
-            .hg_init_info  = NULL       /* struct hg_init_info* */
-        };
+        init_mid(addr);
 
-        mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args_e1);
-        // printf("After mid_init\n");
-        if (mid == MARGO_INSTANCE_NULL) {
-            fprintf(stderr, "Error: margo_init_ext()\n");
-            // FIXME: We must have a way to manage wrong allocation of mid class
-            // return -1;
-        }
-        margo_set_log_level(mid, MARGO_LOG_TRACE);
-        free(proto);
-        
-        
-        /* register RPC */
-        ff_rpc_id = MARGO_REGISTER(mid, "ff_rpc", ff_rpc_in_t, void, NULL);
-        margo_registered_disable_response(mid, ff_rpc_id, HG_TRUE);
-        margo_addr_lookup(mid, addr, &svr_addr);
-        // TODO: add error handling
-
-        ff_shutdown_id = MARGO_REGISTER_PROVIDER(mid, "ff_rpc_shutdown", void, void, NULL, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
-        margo_registered_disable_response(mid, ff_shutdown_id, HG_TRUE);
+        register_rpcs();
     }
 
     float* svc(float * task) {
@@ -223,6 +181,49 @@ public:
         ABT_xstream_get_state(xstream_e1, &state);
         std::cout << "State: " << state << "\n";
         ABT_pool_free(&pool_e1);
+    }
+
+    void register_rpcs() {
+        /* register RPC */
+        ff_rpc_id = MARGO_REGISTER(mid, "ff_rpc", ff_rpc_in_t, void, NULL);
+        margo_registered_disable_response(mid, ff_rpc_id, HG_TRUE);
+        margo_addr_lookup(mid, addr, &svr_addr);
+        // TODO: add error handling
+
+        ff_shutdown_id = MARGO_REGISTER_PROVIDER(mid, "ff_rpc_shutdown", void, void, NULL, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        margo_registered_disable_response(mid, ff_shutdown_id, HG_TRUE);
+    }
+
+    void init_mid(char* address) {
+        char*                  proto;
+        char*                  colon;
+
+        /* initialize Mercury using the transport portion of the destination
+        * address (i.e., the part before the first : character if present)
+        */
+        proto = strdup(address);
+        assert(proto);
+        colon = strchr(proto, ':');
+        if (colon) *colon = '\0';
+
+        margo_init_info args = {
+            .json_config   = NULL,      /* const char*          */
+            .progress_pool = pool_e1,   /* ABT_pool             */
+            .rpc_pool      = pool_e1,   /* ABT_pool             */
+            .hg_class      = NULL,      /* hg_class_t*          */
+            .hg_context    = NULL,      /* hg_context_t*        */
+            .hg_init_info  = NULL       /* struct hg_init_info* */
+        };
+
+        mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
+        if (mid == MARGO_INSTANCE_NULL) {
+            fprintf(stderr, "Error: margo_init_ext()\n");
+            // FIXME: We must have a way to manage wrong allocation of mid class
+            // return -1;
+        }
+        margo_set_log_level(mid, MARGO_LOG_TRACE);
+        free(proto);
+
     }
 };
 
