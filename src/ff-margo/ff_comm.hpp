@@ -75,21 +75,20 @@ public:
     }
 
     void register_rpcs(margo_instance_id* mid) {
-        /* register RPC */
-        hg_id_t id = MARGO_REGISTER_PROVIDER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc);
         margo_registered_disable_response(*mid, id, HG_TRUE);
-        margo_info(*mid, "id: %d\n", id);
         margo_register_data(*mid, id, this, NULL);
 
-        id = MARGO_REGISTER_PROVIDER(*mid, "ff_rpc_shutdown", void, void, ff_rpc_shutdown, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        id = MARGO_REGISTER(*mid, "ff_rpc_shutdown", void, void, ff_rpc_shutdown);
         margo_registered_disable_response(*mid, id, HG_TRUE);
     }
+
 
     void init_mid(char* address, margo_instance_id* mid) {
         margo_init_info args = {
             .json_config   = NULL,      /* const char*          */
-            .progress_pool = pool_e1, /* ABT_pool             */
-            .rpc_pool      = pool_e1, /* ABT_pool             */
+            .progress_pool = pool_e1,   /* ABT_pool             */
+            .rpc_pool      = pool_e1,   /* ABT_pool             */
             .hg_class      = NULL,      /* hg_class_t*          */
             .hg_context    = NULL,      /* hg_context_t*        */
             .hg_init_info  = NULL       /* struct hg_init_info* */
@@ -100,9 +99,6 @@ public:
 
         margo_set_log_level(*mid, MARGO_LOG_TRACE);
     }
-
-    // TODO: probably not necessary at all, since ff_sendout is public
-    // friend hg_return_t _handler_for_ff_rpc(hg_handle_t h);
 
     float* svc(float * task) {
         std::vector<ABT_thread*>* threads = new std::vector<ABT_thread*>();
@@ -122,6 +118,8 @@ public:
         // ABT_pool_free(&pool_e2);
         return EOS;
     }
+
+    // TODO: add cleanup code in destructor
 
 };
 
@@ -148,10 +146,8 @@ public:
     }
 
     float* svc(float * task) {
-        printf("Got a task!\n");
         auto &t = *task; 
         ff_rpc_in_t in;
-        hg_return_t ret;
         hg_handle_t h;
 
         in.task = new float(*task);
@@ -160,9 +156,9 @@ public:
         std::cout << "Sending out: " << *in.task << "\n";
         margo_create(mid, svr_addr, ff_rpc_id, &h);
         margo_forward(h, &in);
-
         margo_destroy(h);
 
+        delete in.task;
         return GO_ON;
     }
 
@@ -170,21 +166,16 @@ public:
         std::cout << "Finalizing...\n";
         
         hg_handle_t h;
-        printf("Got EOS\n");
         margo_create(mid, svr_addr, ff_shutdown_id, &h);
         margo_forward(h, NULL);
         margo_destroy(h);
         
         margo_finalize(mid);
         finalize_xstream_cb(xstream_e1);
-        ABT_xstream_state state;
-        ABT_xstream_get_state(xstream_e1, &state);
-        std::cout << "State: " << state << "\n";
         ABT_pool_free(&pool_e1);
     }
 
     void register_rpcs() {
-        /* register RPC */
         ff_rpc_id = MARGO_REGISTER(mid, "ff_rpc", ff_rpc_in_t, void, NULL);
         margo_registered_disable_response(mid, ff_rpc_id, HG_TRUE);
         margo_addr_lookup(mid, addr, &svr_addr);
@@ -234,7 +225,6 @@ void ff_rpc(hg_handle_t handle)
 {
     hg_return_t           hret;
     ff_rpc_in_t           in;
-    hg_size_t             size;
     const struct hg_info* hgi;
     margo_instance_id mid;
 
@@ -246,12 +236,11 @@ void ff_rpc(hg_handle_t handle)
     mid = margo_hg_info_get_instance(hgi);
     assert(mid != MARGO_INSTANCE_NULL);
 
-    // margo_info(mid, "Got RPC request with input_val: %f\n", *in.task);
     const struct hg_info* info = margo_get_info(handle);
 
-    receiverStage* my_first = (receiverStage*)margo_registered_data(mid, info->id);
+    receiverStage* receiver = (receiverStage*)margo_registered_data(mid, info->id);
 
-    my_first->ff_send_out(new float(*in.task));
+    receiver->ff_send_out(new float(*in.task));
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
@@ -268,7 +257,6 @@ void ff_rpc_shutdown(hg_handle_t handle)
 
     printf("Got RPC request to shutdown\n");
 
-    /* get handle info and margo instance */
     mid = margo_hg_handle_get_instance(handle);
     assert(mid != MARGO_INSTANCE_NULL);
 
