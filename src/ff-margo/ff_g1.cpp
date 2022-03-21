@@ -42,6 +42,8 @@
 
 using namespace ff;
 
+#define SLEEP_FIRST 1
+#define SLEEP_SECOND 4
 
 // Normal FF stage
 struct firstStage: ff_node_t<float> {
@@ -49,11 +51,20 @@ struct firstStage: ff_node_t<float> {
     float* svc(float *) {
         for(size_t i=0; i<length; ++i) {
             ff_send_out(new float(i));
+            std::this_thread::sleep_for(std::chrono::seconds(SLEEP_FIRST));       
             std::cout << "Sent out to next stage: " << i << "\n";
         }
         return EOS;
     }
     const size_t length;
+};
+
+struct secondStage: ff_node_t<float> {
+    float* svc(float * task) { 
+        std::this_thread::sleep_for(std::chrono::seconds(SLEEP_SECOND));       
+        std::cout << "Second stage out: " << *task << "\n";
+        return task; 
+    }
 };
 
 
@@ -70,12 +81,14 @@ int main(int argc, char** argv)
     ABT_init(0, NULL);
 
     firstStage  first(std::stol(argv[1]));
-    senderStage second(argv[2]);
-    ff_Pipe<float> pipe(first, second);
+    secondStage second;
+    senderStage sender(argv[2]);
+    ff_Pipe<float> pipe(first, second, sender);
     if (pipe.run_and_wait_end()<0) {
         error("running pipe");
         return -1;
     }
+    std::cout << "Time: " << pipe.ffTime() << "\n";
 
     ABT_finalize();
 }

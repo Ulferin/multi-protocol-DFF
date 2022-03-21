@@ -34,6 +34,7 @@
 #include <margo.h>
 
 #include <iostream>
+#include <thread>
 
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>
@@ -43,26 +44,29 @@
 
 using namespace ff;
 
+#define SLEEP_FIRST 0
 
-// Normal FF stage
-struct secondStage: ff_node_t<float> {
-    // secondStage(){}
-    float* svc(float *task) {
-        std::cout << "Received: " << *task << "\n"; 
-
-        return GO_ON;
+struct firstStage: ff_node_t<float> {   
+    float* svc(float * task) { 
+        auto &t = *task;
+        sum += t; 
+        delete task;
+        std::this_thread::sleep_for(std::chrono::seconds(SLEEP_FIRST));       
+        return GO_ON; 
     }
+    void svc_end() { std::cout << "sum = " << sum << "\n"; }
+    float sum{0.0};
 };
 
 
 int main(int argc, char** argv)
 {
-    if (argc != 3) {
+    if (argc < 2) {
         fprintf(stderr, "Usage: ./server <listen_addr1> <listen_addr2>\n");
         fprintf(stderr, "Example: ./server na+sm:// ofi+tcp://\n");
         return (-1);
     }
-    
+
     margo_set_environment(NULL);
     margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
@@ -73,14 +77,14 @@ int main(int argc, char** argv)
         (*addresses).push_back(argv[i]);
     }
 
-    receiverStage first(addresses);
-    secondStage second;
-    ff_Pipe<float> pipe(first, second);
+    receiverStage receiver(addresses);
+    firstStage first;
+    ff_Pipe<float> pipe(receiver, first);
     if (pipe.run_and_wait_end()<0) {
         error("running pipe");
         return -1;
     }
-
+    std::cout << "Time: " << pipe.ffTime() << "\n";
     ABT_finalize();
 
     return (0);

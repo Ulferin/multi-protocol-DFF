@@ -45,16 +45,31 @@
 
 using namespace ff;
 
+#define SLEEP_FIRST 2
+#define SLEEP_SECOND 3
 
-// Normal FF stage
-struct secondStage: ff_node_t<float> {
-    // secondStage(){}
-    float* svc(float *task) {
-        std::cout << "Received: " << *task << "\n"; 
-        std::this_thread::sleep_for (std::chrono::seconds(1));
-        return task;
+struct firstStage: ff_node_t<float> {
+    float* svc(float * task) { 
+        auto &t = *task; 
+
+        std::this_thread::sleep_for(std::chrono::seconds(SLEEP_FIRST));       
+        t = t*t;
+        std::cout << "First stage out: " << t << "\n";
+        return task; 
     }
 };
+
+struct secondStage: ff_node_t<float> {
+    float* svc(float * task) { 
+        auto &t = *task; 
+
+        std::this_thread::sleep_for(std::chrono::seconds(SLEEP_SECOND));       
+        t = t+1;
+        std::cout << "Second stage out: " << t << "\n";
+        return task; 
+    }
+};
+
 
 int main(int argc, char** argv)
 {
@@ -84,15 +99,16 @@ int main(int argc, char** argv)
         (*addresses).push_back(argv[i]);
     }
 
-    receiverStage first(addresses);
+    receiverStage receiver(addresses);
+    firstStage first;
     secondStage second;
-    senderStage third(argv[1]);
-    ff_Pipe<float> pipe(first, second, third);
+    senderStage sender(argv[1]);
+    ff_Pipe<float> pipe(receiver, first, second, sender);
     if (pipe.run_and_wait_end()<0) {
         error("running pipe");
         return -1;
     }
-
+    std::cout << "Time: " << pipe.ffTime() << "\n";
     ABT_finalize();
 
     return (0);
