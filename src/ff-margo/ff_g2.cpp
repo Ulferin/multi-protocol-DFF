@@ -3,27 +3,26 @@
  * @author Federico Finocchio
  * @brief Second group for testing Margo library as a communication layer in FF.
  * The second group (G2) is composed as described in the picture below:
- *  ___________             __________________             ___________
- * |           |           |                  |           |           |
- * | ff_g1.out |--remote-->| S1 --> S2 --> S3 |--remote-->| ff_g3.out |
- * |___________|           |__________________|           |___________|
+ *  ___________             __________________              ___________
+ * |           |           |                  |            |           |
+ * | ff_g1.out |--remote--|R|--> S1 --> S2 --|S|--remote-->| ff_g3.out |
+ * |___________|           |__________________|            |___________|
  *      G1                           G2                         G3
  * 
  * Remote connections are handled via Margo RPC calls and the internal
  * stage connections are usual FF shared memory connections.
  * 
- * The pipeline stages are FastFlow nodes, where (S1) is a "receiver" node,
- * which waits for incoming RPC calls and forward the arguments to the (S2).
- * In this particular example (S1) listens for incoming RPCs on two endpoints,
+ * The receiverStage (R) listens for incoming RPCs on a list of endpoints,
  * potentially using different protocols and port numbers. They must be
- * specified during initilization. (S2) node is just a forwarder between the
- * two extremes. The last stage (S3) gets the stream elements from S2 and
- * forwards them to an attached remote group (G3) via RPC requests.
+ * specified during initilization. (S1) and (S2) nodes are just "dummy" nodes
+ * which simulate work and forward stream elements to the senderStage (S).
+ * The last stage (S) gets the stream elements from S2 and forwards them to an
+ * attached remote group (G3) via RPC requests. Remote endpoint address must be
+ * specified upon initialization.
  * 
  * 
- * @date 2022-03-10
+ * @date 2022-03-16
  * 
- * @copyright Copyright (c) 2022
  * 
  */
 
@@ -31,12 +30,11 @@
 #include <assert.h>
 #include <unistd.h>
 #include <mercury.h>
-#include <abt.h>
-#include <margo.h>
-
 #include <iostream>
 #include <thread>
 
+#include <abt.h>
+#include <margo.h>
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>
 

@@ -3,26 +3,24 @@
  * @author Federico Finocchio
  * @brief Third group for testing Margo library as a communication layer in FF.
  * The third group (G3) is composed as described in the picture below:
- *  ___________             ___________             ___________
- * |           |           |           |           |           |
- * | ff_g1.out |--remote-->| ff_g2.out |--remote-->| S1 --> S2 |
- * |___________|           |___________|           |___________|
+ *  ___________             ___________             ________
+ * |           |           |           |           |        |
+ * | ff_g1.out |--remote-->| ff_g2.out |--remote--|R|--> S1 |
+ * |___________|           |___________|           |________|
  *      G1                       G2                      G3
  * 
  * Remote connections are handled via Margo RPC calls and the internal
  * stage connections are usual FF shared memory connections.
  * 
- * The pipeline stages are FastFlow nodes, where (S1) is a "receiver" node,
- * which waits for incoming RPC calls and forward the arguments to the (S2).
- * In this particular example (S1) listens for incoming RPCs on two endpoints,
- * potentially using different protocols and port numbers. They must be
- * specified during initilization. (S2) node is just a forwarder, it ignores
- * the received tasks.
+ * The pipeline stages are FastFlow nodes, where (R) is a "receiver" node,
+ * which waits for incoming RPC calls and forward the arguments to (S1) node.
+ * The receiverStage (R) can listen on a list of endpoints which must be 
+ * specified upon initialization. Stage (S1) simply sums every element it
+ * receives from the stream and prints the result upon termination.
  * 
  * 
- * @date 2022-03-16
+ * @date 2022-03-21
  * 
- * @copyright Copyright (c) 2022
  * 
  */
 
@@ -62,7 +60,7 @@ struct firstStage: ff_node_t<float> {
 int main(int argc, char** argv)
 {
     if (argc < 2) {
-        fprintf(stderr, "Usage: ./server <listen_addr1> <listen_addr2>\n");
+        fprintf(stderr, "Usage: ./server <listen_addr 1> ... <listen_addr n>\n");
         fprintf(stderr, "Example: ./server na+sm:// ofi+tcp://\n");
         return (-1);
     }
