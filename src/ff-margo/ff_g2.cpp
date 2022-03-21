@@ -56,41 +56,37 @@ struct secondStage: ff_node_t<float> {
     }
 };
 
-// Normal FF stage
-struct testStage: ff_node_t<float> {
-    testStage(const size_t length):length(length) {}
-    float* svc(float *) {
-        for(size_t i=0; i<length; ++i) {
-            ff_send_out(new float(i+10));
-            std::cout << "Sent out to next stage: " << i << "\n";
-        }
-        return EOS;
-    }
-    const size_t length;
-};
-
 int main(int argc, char** argv)
 {
-    if (argc != 4) {
-        fprintf(stderr, "Usage: ./server <listen_addr1> <listen_addr2> <contact address>\n");
-        fprintf(stderr, "Example: ./server na+sm:// ofi+tcp:// ofi+sockets://\n");
+    if (argc < 3) {
+        fprintf(stderr, "Usage: ./server <remote address> <listen_addr 1> ... <listen_addr n>\n");
+        fprintf(stderr, "You should provide the address to connect this group with (remote address) "\
+        "and at least one address which this group will listen on.\n");
+        fprintf(stderr, "Example: ./server ofi+sockets://1.2.3.4:1234 na+sm:// ofi+tcp://\n");
         return (-1);
     }
 
-    // margo_set_global_log_level(MARGO_LOG_TRACE);
-
+    // TODO: check this claim
     // NOTE: In order to allow different threads to use the same ABT
     // initialization we need to initialize the mid classes in the constructor.
     // This meaning that different stages are strictly related to the ABT_init
     // below.
 
     margo_set_environment(NULL);
+    // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
-    secondStage second;
+    // NOTE: here most likely we will have a vector/map composed of addresses
+    //       coming from a configuration file
+    std::vector<char*>* addresses = new std::vector<char*>();
+    for (int i = 2; i < argc; i++)
+    {
+        (*addresses).push_back(argv[i]);
+    }
 
-    receiverStage* first = new receiverStage(argv[1], argv[2]);
-    senderStage third(argv[3]);
+    receiverStage first(addresses);
+    secondStage second;
+    senderStage third(argv[1]);
     ff_Pipe<float> pipe(first, second, third);
     if (pipe.run_and_wait_end()<0) {
         error("running pipe");

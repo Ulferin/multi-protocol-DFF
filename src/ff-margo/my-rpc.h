@@ -31,28 +31,31 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
     return ret;
 }
 
-void get_self_addr(margo_instance_id mid, char* addr_str) {
+// TODO: put these in utils.h
+void get_self_addr(margo_instance_id* mid, char* addr_str) {
     hg_size_t addr_self_string_sz = 128;
     hg_addr_t addr_self;
     /* figure out first listening addr */
-    hg_return_t hret = margo_addr_self(mid, &addr_self);
+    hg_return_t hret = margo_addr_self(*mid, &addr_self);
     if (hret != HG_SUCCESS) {
         fprintf(stderr, "Error: margo_addr_self()\n");
-        margo_finalize(mid);
+        margo_finalize(*mid);
     }
-    hret = margo_addr_to_string(mid, addr_str, &addr_self_string_sz,
+    hret = margo_addr_to_string(*mid, addr_str, &addr_self_string_sz,
                                 addr_self);
     if (hret != HG_SUCCESS) {
         fprintf(stderr, "Error: margo_addr_to_string()\n");
-        margo_addr_free(mid, addr_self);
-        margo_finalize(mid);
+        margo_addr_free(*mid, addr_self);
+        margo_finalize(*mid);
     }
-    margo_addr_free(mid, addr_self);
+    margo_addr_free(*mid, addr_self);
 }
 
 static void wait_fin(void* arg) {
     margo_instance_id* mid = (margo_instance_id*)arg;
+    margo_info(*mid, "Before finalizing...");
     margo_wait_for_finalize(*mid);
+    margo_info(*mid, "After finalizing...");
 }
 
 static void finalize_xstream_cb(void* data) {

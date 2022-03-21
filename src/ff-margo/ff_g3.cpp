@@ -62,11 +62,18 @@ int main(int argc, char** argv)
         fprintf(stderr, "Example: ./server na+sm:// ofi+tcp://\n");
         return (-1);
     }
+    
     margo_set_environment(NULL);
     margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
-    receiverStage* first = new receiverStage(argv[1], argv[2]);
+    std::vector<char*>* addresses = new std::vector<char*>();
+    for (int i = 1; i < argc; i++)
+    {
+        (*addresses).push_back(argv[i]);
+    }
+
+    receiverStage first(addresses);
     secondStage second;
     ff_Pipe<float> pipe(first, second);
     if (pipe.run_and_wait_end()<0) {

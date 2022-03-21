@@ -2,6 +2,7 @@
 
 #include <ff/ff.hpp>
 #include <margo.h>
+#include <vector>
 #include <abt.h>
 
 #include "my-rpc.h"
@@ -17,60 +18,37 @@ DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
 
 
 // Margo communicator node (server)
-struct receiverStage: ff_node_t<float> {
+class receiverStage: public ff_node_t<float> {
+public:
     hg_return_t         hret;
-    margo_instance_id   mid1, mid2;
-    hg_id_t             id, id2, ff_shutdown_id1, ff_shutdown_id2;
+    std::vector<margo_instance_id*>* mids;
+    
     hg_addr_t           addr_self;
-    char                addr_self_string1[128];
-    char                addr_self_string2[128];
-    hg_size_t           addr_self_string_sz = 128;
+    ABT_pool            pool_e1;
+    ABT_xstream         xstream_e1;
 
-    ABT_pool            pool_e1, pool_e2, pool_wait;
-    ABT_xstream         xstream_e1, xstream_e2, xstream_wait;
+    receiverStage(std::vector<char*>* addresses) {
+        // NOTE: amount of pools and ES can be tweaked however we want here, as
+        //       as long as we keep the waiting calls in different ULTs, since
+        //       they are blocking calls and would block the whole main ULT in
+        //       case we do not separate them.
 
-    char*               a1;
-    char*               a2;
-
-    int                 num_rpc1, num_rpc2;
-
-    struct margo_init_info args_e1, args_e2;
-
-    receiverStage(char* addr1, char* addr2) : a1{addr1}, a2{addr2}, num_rpc1{0}, num_rpc2{0} {
+        mids = new std::vector<margo_instance_id*>();
+        // TODO: pools and xstreams can be placed in a vector
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE, &pool_e1);
-        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE, &pool_e2);
+        // ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE, &pool_e2);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1, ABT_SCHED_CONFIG_NULL, &xstream_e1);
-        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e2, ABT_SCHED_CONFIG_NULL, &xstream_e2);
+        // ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e2, ABT_SCHED_CONFIG_NULL, &xstream_e2);    
 
-        args_e1 = {
-            .json_config   = NULL,      /* const char*          */
-            .progress_pool = pool_e1, /* ABT_pool             */
-            .rpc_pool      = pool_e1, /* ABT_pool             */
-            .hg_class      = NULL,      /* hg_class_t*          */
-            .hg_context    = NULL,      /* hg_context_t*        */
-            .hg_init_info  = NULL       /* struct hg_init_info* */
-        };
 
-        args_e2 = {
-            .json_config   = NULL,      /* const char*          */
-            .progress_pool = pool_e2, /* ABT_pool             */
-            .rpc_pool      = pool_e2, /* ABT_pool             */
-            .hg_class      = NULL,      /* hg_class_t*          */
-            .hg_context    = NULL,      /* hg_context_t*        */
-            .hg_init_info  = NULL       /* struct hg_init_info* */
-        };
-
-        /***************************************/
-        mid1 = margo_init_ext(a1, MARGO_SERVER_MODE, &args_e1);
-        if (mid1 == MARGO_INSTANCE_NULL) {
-            fprintf(stderr, "Error: margo_init()\n");
+        for (auto &&addr : *addresses)
+        {
+            margo_instance_id* mid = new margo_instance_id();
+            init_mid(addr, mid);
+            (*mids).push_back(mid);
         }
         
-        mid2 = margo_init_ext(a2, MARGO_SERVER_MODE, &args_e2);
-        if (mid2 == MARGO_INSTANCE_NULL) {
-            fprintf(stderr, "Error: margo_init()\n");
-        }
-
+        
 #ifdef DEBUG
         margo_set_log_level(mid1, MARGO_LOG_TRACE);
         char* config = margo_get_config(mid1);
@@ -83,47 +61,72 @@ struct receiverStage: ff_node_t<float> {
         free(config1);  
 #endif
 
-        get_self_addr(mid1, addr_self_string1);
-        get_self_addr(mid2, addr_self_string2);
-        fprintf(stderr, "# accepting RPCs on address \"%s\" and \"%s\"\n",
-                addr_self_string1, addr_self_string2);
+        for (auto &&mid : *mids)
+        {
+            char addr_self_string[128];
+            get_self_addr(mid, addr_self_string);
 
-        /* register RPC */
-        id = MARGO_REGISTER_PROVIDER(mid1, "ff_rpc", ff_rpc_in_t, void, ff_rpc, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
-        margo_registered_disable_response(mid1, id, HG_TRUE);
-        margo_info(mid1, "id: %d\n", id);
-        margo_register_data(mid1, id, this, NULL);
+            fprintf(stderr, "# accepting RPCs on address \"%s\"\n",
+                addr_self_string);
 
-        ff_shutdown_id1 = MARGO_REGISTER_PROVIDER(mid1, "ff_rpc_shutdown", void, void, ff_rpc_shutdown, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
-        margo_registered_disable_response(mid1, ff_shutdown_id1, HG_TRUE);
-
-        id2 = MARGO_REGISTER_PROVIDER(mid2, "ff_rpc", ff_rpc_in_t, void, ff_rpc, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
-        margo_registered_disable_response(mid2, id2, HG_TRUE);
-        margo_info(mid2, "id: %d\n", id2);
-        margo_register_data(mid2, id2, this, NULL);
-
-        ff_shutdown_id2 = MARGO_REGISTER_PROVIDER(mid2, "ff_rpc_shutdown", void, void, ff_rpc_shutdown, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
-        margo_registered_disable_response(mid2, ff_shutdown_id2, HG_TRUE);
+            register_rpcs(mid);
+        }
 
     }
 
-    friend hg_return_t _handler_for_ff_rpc(hg_handle_t h);
-    friend void ff_rpc(hg_handle_t handle);
+    void register_rpcs(margo_instance_id* mid) {
+        /* register RPC */
+        hg_id_t id = MARGO_REGISTER_PROVIDER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        margo_registered_disable_response(*mid, id, HG_TRUE);
+        margo_info(*mid, "id: %d\n", id);
+        margo_register_data(*mid, id, this, NULL);
+
+        id = MARGO_REGISTER_PROVIDER(*mid, "ff_rpc_shutdown", void, void, ff_rpc_shutdown, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        margo_registered_disable_response(*mid, id, HG_TRUE);
+    }
+
+    void init_mid(char* address, margo_instance_id* mid) {
+        margo_init_info args = {
+            .json_config   = NULL,      /* const char*          */
+            .progress_pool = pool_e1, /* ABT_pool             */
+            .rpc_pool      = pool_e1, /* ABT_pool             */
+            .hg_class      = NULL,      /* hg_class_t*          */
+            .hg_context    = NULL,      /* hg_context_t*        */
+            .hg_init_info  = NULL       /* struct hg_init_info* */
+        };
+
+        *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
+        // TODO: error handling code here
+
+        margo_set_log_level(*mid, MARGO_LOG_TRACE);
+    }
+
+    // TODO: probably not necessary at all, since ff_sendout is public
+    // friend hg_return_t _handler_for_ff_rpc(hg_handle_t h);
 
     float* svc(float * task) {
-        ABT_thread t_e1, t_e2;
-        ABT_thread_create(pool_e1, wait_fin, &mid1, NULL, &t_e1);
-        ABT_thread_create(pool_e2, wait_fin, &mid2, NULL, &t_e2);
+        std::vector<ABT_thread*>* threads = new std::vector<ABT_thread*>();
+        
+        for (auto &&mid : *mids)
+        {
+            ABT_thread* aux = new ABT_thread();
+            ABT_thread_create(pool_e1, wait_fin, mid, NULL, aux);
+            (*threads).push_back(aux);
+        }
 
+        // TODO: this should be a single call to finalize each ES and free
+        //       every pool. Most likely to become a for loop over a vector
         finalize_xstream_cb(xstream_e1);
-        finalize_xstream_cb(xstream_e2);
+        // finalize_xstream_cb(xstream_e2);
         ABT_pool_free(&pool_e1);
-        ABT_pool_free(&pool_e2);
+        // ABT_pool_free(&pool_e2);
         return EOS;
     }
+
 };
 
 // Margo communicator node (client)
+// TODO: define this as a templated class
 class senderStage: public ff_node_t<float> {
 
 private:
@@ -180,6 +183,7 @@ public:
         ff_rpc_id = MARGO_REGISTER(mid, "ff_rpc", ff_rpc_in_t, void, NULL);
         margo_registered_disable_response(mid, ff_rpc_id, HG_TRUE);
         margo_addr_lookup(mid, addr, &svr_addr);
+        // TODO: add error handling
 
         ff_shutdown_id = MARGO_REGISTER_PROVIDER(mid, "ff_rpc_shutdown", void, void, NULL, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
         margo_registered_disable_response(mid, ff_shutdown_id, HG_TRUE);
@@ -223,6 +227,8 @@ public:
 };
 
 
+/* ----- RPC FUNCTIONS DEFINITION ----- */
+
 void ff_rpc(hg_handle_t handle)
 {
     hg_return_t           hret;
@@ -248,10 +254,6 @@ void ff_rpc(hg_handle_t handle)
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
-    
-    // my_first->num_rpc1++;
-    // if(my_first->num_rpc1 >= 20)
-    //     margo_finalize(mid);
 
     return;
 }
@@ -275,3 +277,5 @@ void ff_rpc_shutdown(hg_handle_t handle)
     return;
 }
 DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown)
+
+/* ----- RPC FUNCTIONS DEFINITION ----- */
