@@ -66,13 +66,13 @@ int main(int argc, char** argv)
     }
 
     margo_set_environment(NULL);
-    margo_set_global_log_level(MARGO_LOG_TRACE);
+    // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
-    std::vector<char*>* addresses = new std::vector<char*>();
+    std::vector<char*> addresses;
     for (int i = 1; i < argc; i++)
     {
-        (*addresses).push_back(argv[i]);
+        addresses.push_back(argv[i]);
     }
 
     receiverStage receiver(addresses);

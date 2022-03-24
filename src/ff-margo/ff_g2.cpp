@@ -52,7 +52,7 @@ struct firstStage: ff_node_t<float> {
 
         std::this_thread::sleep_for(std::chrono::seconds(SLEEP_FIRST));       
         t = t*t;
-        std::cout << "First stage out: " << t << "\n";
+        std::cout << "[FIRST]sending out: " << t << "\n";
         return task; 
     }
 };
@@ -63,7 +63,7 @@ struct secondStage: ff_node_t<float> {
 
         std::this_thread::sleep_for(std::chrono::seconds(SLEEP_SECOND));       
         t = t+1;
-        std::cout << "Second stage out: " << t << "\n";
+        std::cout << "[SECOND]sending out: " << t << "\n";
         return task; 
     }
 };
@@ -72,18 +72,16 @@ struct secondStage: ff_node_t<float> {
 int main(int argc, char** argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "Usage: ./server <remote address> <listen_addr 1> ... <listen_addr n>\n");
-        fprintf(stderr, "You should provide the address to connect this group with (remote address) "\
+        fprintf(stderr, "Usage: ./server <remote address> <listen_addr 1> ..."\
+                " <listen_addr n>\n");
+        fprintf(stderr, "You should provide the address to connect this group"\
+                " with (remote address) "\
         "and at least one address which this group will listen on.\n");
-        fprintf(stderr, "Example: ./server ofi+sockets://1.2.3.4:1234 na+sm:// ofi+tcp://\n");
-        return (-1);
+        fprintf(stderr, "Example: ./server ofi+sockets://1.2.3.4:1234"\
+                " na+sm:// ofi+tcp://\n");
+        return -1;
     }
 
-    // TODO: check this claim
-    // NOTE: In order to allow different threads to use the same ABT
-    // initialization we need to initialize the mid classes in the constructor.
-    // This meaning that different stages are strictly related to the ABT_init
-    // below.
 
     margo_set_environment(NULL);
     // margo_set_global_log_level(MARGO_LOG_TRACE);
@@ -91,23 +89,25 @@ int main(int argc, char** argv)
 
     // NOTE: here most likely we will have a vector/map composed of addresses
     //       coming from a configuration file
-    std::vector<char*>* addresses = new std::vector<char*>();
+    std::vector<char*> addresses;
     for (int i = 2; i < argc; i++)
     {
-        (*addresses).push_back(argv[i]);
+        addresses.push_back(argv[i]);
     }
 
+    // Build the pipe and run
     receiverStage receiver(addresses);
     firstStage first;
     secondStage second;
     senderStage sender(argv[1]);
     ff_Pipe<float> pipe(receiver, first, second, sender);
+
     if (pipe.run_and_wait_end()<0) {
         error("running pipe");
         return -1;
     }
     std::cout << "Time: " << pipe.ffTime() << "\n";
-    ABT_finalize();
 
+    ABT_finalize();
     return (0);
 }

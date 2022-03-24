@@ -39,14 +39,6 @@
 
 using namespace ff;
 
-// RPC function used to send stream elements between different groups
-void ff_rpc(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc);
-
-// RPC function used to signal EOS to remote groups
-void ff_rpc_shutdown(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
-
 
 
 class receiverStage: public ff_node_t<float> {
@@ -88,7 +80,7 @@ private:
 
 
 public:
-    receiverStage(std::vector<char*>* addresses) {
+    receiverStage(std::vector<char*> addresses) {
         mids = new std::vector<margo_instance_id*>();
 
         // NOTE: amount of pools and ES can be tweaked however we want here, as
@@ -99,11 +91,13 @@ public:
         // TODO: pools and xstreams can be placed in a vector
         
         // Set up pool and xstreams to manage RPC requests
-        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE, &pool_e1);
-        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1, ABT_SCHED_CONFIG_NULL, &xstream_e1);
+        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
+                ABT_FALSE, &pool_e1);
+        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
+                ABT_SCHED_CONFIG_NULL, &xstream_e1);
 
         // Init margo instances and register the set of RPCs
-        for (auto &&addr : *addresses)
+        for (auto &&addr : addresses)
         {
             margo_instance_id* mid = new margo_instance_id();
             init_mid(addr, mid);
@@ -161,7 +155,8 @@ private:
         margo_addr_lookup(mid, addr, &svr_addr);
         // TODO: add error handling
 
-        ff_shutdown_id = MARGO_REGISTER_PROVIDER(mid, "ff_rpc_shutdown", void, void, NULL, MARGO_DEFAULT_PROVIDER_ID, ABT_POOL_NULL);
+        ff_shutdown_id = MARGO_REGISTER(mid, "ff_rpc_shutdown",
+                void, void, NULL);
         margo_registered_disable_response(mid, ff_shutdown_id, HG_TRUE);
     }
 
@@ -200,8 +195,10 @@ private:
 
 public:
     senderStage(char* addr) : addr{addr}, svr_addr{HG_ADDR_NULL} {
-        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE, &pool_e1);
-        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1, ABT_SCHED_CONFIG_NULL, &xstream_e1);
+        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE,
+                &pool_e1);
+        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
+                ABT_SCHED_CONFIG_NULL, &xstream_e1);
 
         init_mid(addr);
 
@@ -217,7 +214,7 @@ public:
         in.task = new float(*task);
         delete task;
 
-        std::cout << "Sending out: " << *in.task << "\n";
+        std::cout << "[Sender]Sending out: " << *in.task << "\n";
         margo_create(mid, svr_addr, ff_rpc_id, &h);
         margo_forward(h, &in);
         margo_destroy(h);
@@ -242,7 +239,9 @@ public:
 };
 
 
-/* ----- RPC FUNCTIONS DEFINITION ----- */
+/* ----- MARGO RPCs definition ----- */
+// NOTE: these are only needed by the receiverStage class, since senderStage
+//      doesn't need to specify a RPC definition.
 
 void ff_rpc(hg_handle_t handle)
 {
@@ -263,7 +262,8 @@ void ff_rpc(hg_handle_t handle)
     assert(hret == HG_SUCCESS);
 
     // Retrieve registered receiver object and forward input to next stage
-    receiverStage* receiver = (receiverStage*)margo_registered_data(mid, info->id);
+    receiverStage* receiver =
+            (receiverStage*)margo_registered_data(mid, info->id);
     receiver->ff_send_out(new float(*in.task));
 
     margo_free_input(handle, &in);
@@ -291,4 +291,4 @@ void ff_rpc_shutdown(hg_handle_t handle)
 }
 DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown)
 
-/* ----- RPC FUNCTIONS DEFINITION ----- */
+/* ----- MARGO RPCs definition ----- */

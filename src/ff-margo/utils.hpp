@@ -2,8 +2,9 @@
 #define __MY_UTILS
 
 #include <margo.h>
+#include <thread>
 
-// Utily function to retrieve address of listening endpoint using Margo inteface
+// Utily function to retrieve address of listening endpoint using Margo interface
 void get_self_addr(margo_instance_id* mid, char* addr_str) {
     hg_size_t addr_self_string_sz = 128;
     hg_addr_t addr_self;

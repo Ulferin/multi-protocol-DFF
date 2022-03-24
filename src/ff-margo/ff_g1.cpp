@@ -29,11 +29,11 @@
 #include <assert.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <mercury.h>
-#include <abt.h>
-#include <margo.h>
 #include <thread>
 
+#include <margo.h>
+#include <abt.h>
+#include <mercury.h>
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>
 
@@ -48,11 +48,11 @@ using namespace ff;
 
 struct firstStage: ff_node_t<float> {
     firstStage(const size_t length):length(length) {}
-    float* svc(float *) {
+    float* svc(float *) {        
         for(size_t i=0; i<length; ++i) {
             ff_send_out(new float(i));
             std::this_thread::sleep_for(std::chrono::seconds(SLEEP_FIRST));       
-            std::cout << "Sent out to next stage: " << i << "\n";
+            std::cout << "[FIRST]sending out: " << i << "\n";
         }
         return EOS;
     }
@@ -61,9 +61,9 @@ struct firstStage: ff_node_t<float> {
 
 
 struct secondStage: ff_node_t<float> {
-    float* svc(float * task) { 
+    float* svc(float * task) {
         std::this_thread::sleep_for(std::chrono::seconds(SLEEP_SECOND));       
-        std::cout << "Second stage out: " << *task << "\n";
+        std::cout << "[SECOND]sending out: " << *task << "\n";
         return task; 
     }
 };
@@ -76,9 +76,9 @@ int main(int argc, char** argv)
         std::cout << "Usage: " << argv[0] << " <stream len> <remote addr>\n";
         return 1;
     }
-
+    
     margo_set_environment(NULL);
-    margo_set_global_log_level(MARGO_LOG_TRACE);
+    // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
     firstStage  first(std::stol(argv[1]));
