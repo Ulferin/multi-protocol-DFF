@@ -75,7 +75,7 @@ private:
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
         // TODO: error handling code here
 
-        margo_set_log_level(*mid, MARGO_LOG_TRACE);
+        // margo_set_log_level(*mid, MARGO_LOG_TRACE);
     }
 
 
@@ -182,13 +182,13 @@ private:
             .hg_init_info  = NULL       /* struct hg_init_info* */
         };
 
-        mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
+        mid = margo_init_ext(proto, MARGO_SERVER_MODE, &args);
         if (mid == MARGO_INSTANCE_NULL) {
             fprintf(stderr, "Error: margo_init_ext()\n");
             // FIXME: We must have a way to manage wrong allocation of mid class
             // return -1;
         }
-        margo_set_log_level(mid, MARGO_LOG_TRACE);
+        // margo_set_log_level(mid, MARGO_LOG_TRACE);
         free(proto);
 
     }
@@ -264,6 +264,7 @@ void ff_rpc(hg_handle_t handle)
     // Retrieve registered receiver object and forward input to next stage
     receiverStage* receiver =
             (receiverStage*)margo_registered_data(mid, info->id);
+    std::cout << "[receiver]received: " << *(in.task) << "\n";
     receiver->ff_send_out(new float(*in.task));
 
     margo_free_input(handle, &in);

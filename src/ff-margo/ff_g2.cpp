@@ -43,8 +43,8 @@
 
 using namespace ff;
 
-#define SLEEP_FIRST 2
-#define SLEEP_SECOND 3
+#define SLEEP_FIRST 0
+#define SLEEP_SECOND 0
 
 struct firstStage: ff_node_t<float> {
     float* svc(float * task) { 

@@ -42,8 +42,8 @@
 
 using namespace ff;
 
-#define SLEEP_FIRST 1
-#define SLEEP_SECOND 4
+#define SLEEP_FIRST 0
+#define SLEEP_SECOND 0
 
 
 struct firstStage: ff_node_t<float> {

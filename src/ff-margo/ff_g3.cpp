@@ -47,6 +47,7 @@ using namespace ff;
 struct firstStage: ff_node_t<float> {   
     float* svc(float * task) { 
         auto &t = *task;
+        std::cout << "[FIRST]received: " << t << "\n";
         sum += t; 
         delete task;
         std::this_thread::sleep_for(std::chrono::seconds(SLEEP_FIRST));       
