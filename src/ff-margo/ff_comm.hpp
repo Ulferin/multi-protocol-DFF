@@ -73,7 +73,7 @@ private:
         };
 
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
-        // TODO: error handling code here
+        // FIXME: error handling code here
 
         // margo_set_log_level(*mid, MARGO_LOG_TRACE);
     }
@@ -182,6 +182,8 @@ private:
             .hg_init_info  = NULL       /* struct hg_init_info* */
         };
 
+        // NOTE: we are listening on a "client" node. Necessary in order to
+        //       avoid UCX error on printing address
         mid = margo_init_ext(proto, MARGO_SERVER_MODE, &args);
         if (mid == MARGO_INSTANCE_NULL) {
             fprintf(stderr, "Error: margo_init_ext()\n");
@@ -194,6 +196,8 @@ private:
     }
 
 public:
+    // FIXME: modify this in order to use move semantic to transfer ownerhsip of
+    //       address string.
     senderStage(char* addr) : addr{addr}, svr_addr{HG_ADDR_NULL} {
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE,
                 &pool_e1);

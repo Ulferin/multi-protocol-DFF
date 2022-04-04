@@ -26,7 +26,6 @@ ff_g3.out: ff_g3.cpp $(DEPS)
 clean:
 	rm -f ./*.o
 
-cleanall:
-	make clean
+cleanall: clean
 	rm -f $(TARGETS)
 	rm -f ./*.out
