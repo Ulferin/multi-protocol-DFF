@@ -71,13 +71,13 @@ struct secondStage: ff_node_t<float> {
 
 int main(int argc, char** argv)
 {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: ./server <remote address> <listen_addr 1> ..."\
+    if (argc < 4) {
+        fprintf(stderr, "Usage: ./server <busy mode> <remote address> <listen_addr 1> ..."\
                 " <listen_addr n>\n");
         fprintf(stderr, "You should provide the address to connect this group"\
                 " with (remote address) "\
         "and at least one address which this group will listen on.\n");
-        fprintf(stderr, "Example: ./server ofi+sockets://1.2.3.4:1234"\
+        fprintf(stderr, "Example: ./server 0 ofi+sockets://1.2.3.4:1234"\
                 " na+sm:// ofi+tcp://\n");
         return -1;
     }
@@ -87,19 +87,21 @@ int main(int argc, char** argv)
     // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
+    int busy = std::atoi(argv[1]);
+
     // NOTE: here most likely we will have a vector/map composed of addresses
     //       coming from a configuration file
     std::vector<char*> addresses;
-    for (int i = 2; i < argc; i++)
+    for (int i = 3; i < argc; i++)
     {
         addresses.push_back(argv[i]);
     }
 
     // Build the pipe and run
-    receiverStage receiver(addresses);
+    receiverStage receiver(addresses, busy);
     firstStage first;
     secondStage second;
-    senderStage sender(argv[1]);
+    senderStage sender(argv[2], busy);
     ff_Pipe<float> pipe(receiver, first, second, sender);
 
     if (pipe.run_and_wait_end()<0) {

@@ -72,8 +72,8 @@ struct secondStage: ff_node_t<float> {
 int main(int argc, char** argv)
 {
 
-    if(argc != 3) {
-        std::cout << "Usage: " << argv[0] << " <stream len> <remote addr>\n";
+    if(argc != 4) {
+        std::cout << "Usage: " << argv[0] << " <busy mode> <stream len> <remote addr>\n";
         return 1;
     }
     
@@ -81,9 +81,9 @@ int main(int argc, char** argv)
     // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
-    firstStage  first(std::stol(argv[1]));
+    firstStage  first(std::stol(argv[2]));
     secondStage second;
-    senderStage sender(argv[2]);
+    senderStage sender(argv[3], std::atoi(argv[1]));
     ff_Pipe<float> pipe(first, second, sender);
     if (pipe.run_and_wait_end()<0) {
         error("running pipe");

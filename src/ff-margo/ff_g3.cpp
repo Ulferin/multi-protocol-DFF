@@ -60,9 +60,9 @@ struct firstStage: ff_node_t<float> {
 
 int main(int argc, char** argv)
 {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: ./server <listen_addr 1> ... <listen_addr n>\n");
-        fprintf(stderr, "Example: ./server na+sm:// ofi+tcp://\n");
+    if (argc < 3) {
+        fprintf(stderr, "Usage: ./server <busy mode> <listen_addr 1> ... <listen_addr n>\n");
+        fprintf(stderr, "Example: ./server 1 na+sm:// ofi+tcp://\n");
         return (-1);
     }
 
@@ -71,12 +71,12 @@ int main(int argc, char** argv)
     ABT_init(0, NULL);
 
     std::vector<char*> addresses;
-    for (int i = 1; i < argc; i++)
+    for (int i = 2; i < argc; i++)
     {
         addresses.push_back(argv[i]);
     }
 
-    receiverStage receiver(addresses);
+    receiverStage receiver(addresses, std::atoi(argv[1]));
     firstStage first;
     ff_Pipe<float> pipe(receiver, first);
     if (pipe.run_and_wait_end()<0) {

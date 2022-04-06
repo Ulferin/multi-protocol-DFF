@@ -50,6 +50,7 @@ private:
     hg_addr_t           addr_self;
     ABT_pool            pool_e1;
     ABT_xstream         xstream_e1;
+    int                busy;
 
 
     void register_rpcs(margo_instance_id* mid) {
@@ -63,13 +64,20 @@ private:
 
 
     void init_mid(char* address, margo_instance_id* mid) {
+        na_init_info na_info;
+        na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
+        
+        hg_init_info info = {
+            .na_init_info = na_info
+        };
+
         margo_init_info args = {
             .json_config   = NULL,      /* const char*          */
             .progress_pool = pool_e1,   /* ABT_pool             */
             .rpc_pool      = pool_e1,   /* ABT_pool             */
             .hg_class      = NULL,      /* hg_class_t*          */
             .hg_context    = NULL,      /* hg_context_t*        */
-            .hg_init_info  = NULL       /* struct hg_init_info* */
+            .hg_init_info  = &info       /* struct hg_init_info* */
         };
 
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
@@ -80,7 +88,9 @@ private:
 
 
 public:
-    receiverStage(std::vector<char*> addresses) {
+    receiverStage(std::vector<char*> addresses, int busy=0) : 
+                busy{busy} {
+
         mids = new std::vector<margo_instance_id*>();
 
         // NOTE: amount of pools and ES can be tweaked however we want here, as
@@ -147,6 +157,7 @@ private:
     hg_id_t                 ff_rpc_id, ff_shutdown_id;
     ABT_pool                pool_e1;
     ABT_xstream             xstream_e1;
+    int                    busy;
 
 
     void register_rpcs() {
@@ -173,13 +184,19 @@ private:
         colon = strchr(proto, ':');
         if (colon) *colon = '\0';
 
+        na_init_info na_info;
+        na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
+        hg_init_info info = {
+            .na_init_info = na_info
+        };
+
         margo_init_info args = {
             .json_config   = NULL,      /* const char*          */
             .progress_pool = pool_e1,   /* ABT_pool             */
             .rpc_pool      = pool_e1,   /* ABT_pool             */
             .hg_class      = NULL,      /* hg_class_t*          */
             .hg_context    = NULL,      /* hg_context_t*        */
-            .hg_init_info  = NULL       /* struct hg_init_info* */
+            .hg_init_info  = &info       /* struct hg_init_info* */
         };
 
         // NOTE: we are listening on a "client" node. Necessary in order to
@@ -198,7 +215,9 @@ private:
 public:
     // FIXME: modify this in order to use move semantic to transfer ownerhsip of
     //       address string.
-    senderStage(char* addr) : addr{addr}, svr_addr{HG_ADDR_NULL} {
+    senderStage(char* addr, int busy=0) : addr{addr},
+                        busy{busy}, svr_addr{HG_ADDR_NULL} {
+        
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE,
                 &pool_e1);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
