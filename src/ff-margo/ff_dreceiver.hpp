@@ -44,7 +44,7 @@ using namespace ff;
 
 
 
-class ff_dreceiver: public ff_monode_t<float> {
+class ff_dreceiver_rpc: public ff_monode_t<message_t> {
 
 private:
     hg_return_t         hret;
@@ -90,7 +90,7 @@ private:
 
 
 public:
-    receiverStage(std::vector<char*> addresses, int busy=0) : 
+    ff_dreceiver_rpc(std::vector<char*> addresses, int busy=0) : 
                 busy{busy} {
 
         mids = new std::vector<margo_instance_id*>();
@@ -119,7 +119,7 @@ public:
     }
 
 
-    float* svc(float * task) {
+    message_t* svc(message_t * task) {
         std::vector<ABT_thread*> threads;
         
         // Wait for a call to margo_finalize
@@ -134,7 +134,7 @@ public:
         //       every pool. Most likely to become a for loop over a vector
         finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
-        return EOS;
+        return this->EOS;
     }
 
     // TODO: add cleanup code in destructor
@@ -163,8 +163,8 @@ void ff_rpc(hg_handle_t handle)
     assert(hret == HG_SUCCESS);
 
     // Retrieve registered receiver object and forward input to next stage
-    receiverStage* receiver =
-            (receiverStage*)margo_registered_data(mid, info->id);
+    ff_dreceiver_rpc* receiver =
+            (ff_dreceiver_rpc*)margo_registered_data(mid, info->id);
     std::cout << "[receiver]received: " << *(in.task) << "\n";
     receiver->ff_send_out(new float(*in.task));
 

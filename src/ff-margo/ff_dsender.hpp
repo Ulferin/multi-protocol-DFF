@@ -33,6 +33,9 @@
 #include <vector>
 
 #include <ff/ff.hpp>
+#include <ff/distributed/ff_network.hpp>
+#include <ff/distributed/ff_dgroups.hpp>
+
 #include <margo.h>
 #include <abt.h>
 
@@ -43,7 +46,7 @@ using namespace ff;
 
 
 // TODO: define this as a templated class
-class senderStage: public ff_node_t<float> {
+class ff_dsender_rpc: public ff_minode_t<message_t> {
 
 private:
     char*                   addr;
@@ -52,7 +55,7 @@ private:
     hg_id_t                 ff_rpc_id, ff_shutdown_id;
     ABT_pool                pool_e1;
     ABT_xstream             xstream_e1;
-    int                    busy;
+    int                     busy;
 
 
     void register_rpcs() {
@@ -110,7 +113,7 @@ private:
 public:
     // FIXME: modify this in order to use move semantic to transfer ownerhsip of
     //       address string.
-    senderStage(char* addr, int busy=0) : addr{addr},
+    ff_dsender_rpc(char* addr, int busy=0) : addr{addr},
                         busy{busy}, svr_addr{HG_ADDR_NULL} {
         
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE,
@@ -124,12 +127,12 @@ public:
     }
 
 
-    float* svc(float * task) {
+    message_t* svc(message_t * task) {
         auto &t = *task; 
         ff_rpc_in_t in;
         hg_handle_t h;
 
-        in.task = new float(*task);
+        in.task = new message_t(*task);
         delete task;
 
         std::cout << "[Sender]Sending out: " << *in.task << "\n";
