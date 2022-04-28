@@ -165,8 +165,7 @@ void ff_rpc(hg_handle_t handle)
     // Retrieve registered receiver object and forward input to next stage
     ff_dreceiver_rpc* receiver =
             (ff_dreceiver_rpc*)margo_registered_data(mid, info->id);
-    std::cout << "[receiver]received: " << *(in.task) << "\n";
-    receiver->ff_send_out(new float(*in.task));
+    receiver->ff_send_out(in.task);
 
     margo_free_input(handle, &in);
     margo_destroy(handle);

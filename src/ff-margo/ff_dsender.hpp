@@ -127,15 +127,16 @@ public:
     }
 
 
-    message_t* svc(message_t * task) {
+    message_t* svc(message_t* task) {
         auto &t = *task; 
         ff_rpc_in_t in;
         hg_handle_t h;
 
-        in.task = new message_t(*task);
+        in.task = new message_t(task->data.getPtr(), task->data.getLen(), true);
+        in.task->chid = task->chid;
+        in.task->sender = task->sender;
         delete task;
 
-        std::cout << "[Sender]Sending out: " << *in.task << "\n";
         margo_create(mid, svr_addr, ff_rpc_id, &h);
         margo_forward(h, &in);
         margo_destroy(h);
