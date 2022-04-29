@@ -39,7 +39,7 @@
 #include <margo.h>
 #include <abt.h>
 
-#include "my-rpc.h"
+#include "dist_rpc_type.h"
 #include "utils.hpp"
 
 using namespace ff;
@@ -137,6 +137,7 @@ public:
         in.task->sender = task->sender;
         delete task;
 
+        // TODO: check if handle can be created only once for all
         margo_create(mid, svr_addr, ff_rpc_id, &h);
         margo_forward(h, &in);
         margo_destroy(h);
