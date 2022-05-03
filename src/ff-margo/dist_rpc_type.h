@@ -1,7 +1,7 @@
 /**
  * @file my-rpc.h
  * @author Federico Finocchio
- * @brief Header file containing RPC calls declaration and RPC types and packing
+ * @brief Header file containing RPC calls declaration, RPC types and packing
  * routine definition.
  * @version 0.1
  * @date 2022-03-22
@@ -11,8 +11,8 @@
  */
 
 
-#ifndef __MY_RPC
-#define __MY_RPC
+#ifndef __DIST_RPC_TYPE
+#define __DIST_RPC_TYPE
 
 #include <margo.h>
 
@@ -20,13 +20,20 @@
 
 /* --- MARGO RPCs declaration */
 
-// RPC function used to send stream elements between different groups
+// RPC function used to send stream elements between external groups
 void ff_rpc(hg_handle_t handle);
 DECLARE_MARGO_RPC_HANDLER(ff_rpc);
+
+// RPC function used to send stream elements between internal groups
+void ff_rpc_internal(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc_internal);
 
 // RPC function used to signal EOS to remote groups
 void ff_rpc_shutdown(hg_handle_t handle);
 DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
+
+void ff_rpc_shutdown_internal(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal);
 
 /* --- MARGO RPCs declaration --- */
 
@@ -39,7 +46,7 @@ typedef struct {
 
 
 /**
- * @brief Packing/Unpacking routine needed to read/write data from/to Margo send
+ * @brief Packing/Unpacking routine needed to read/write data from/to Margo
  * buffer. It will be internally called by Margo whenever get_input/get_output
  * are called.
  */
@@ -50,6 +57,7 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
     switch (hg_proc_get_op(proc)) {
 
         case HG_ENCODE:
+        {
             ret = hg_proc_int32_t(proc, &struct_data->task->chid);
             if(ret != HG_SUCCESS)
                 break;
@@ -69,8 +77,9 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
                 break;
 
             break;
-        
+        }        
         case HG_DECODE:
+        { 
             message_t* task = new message_t();
             
             ret = hg_proc_int32_t(proc, &task->chid);
@@ -95,11 +104,12 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
             struct_data->task = task;
 
             break;
-
+        }
         case HG_FREE:
+        {
             delete struct_data->task;
             break;
-
+        }
     }
 
     return ret;
