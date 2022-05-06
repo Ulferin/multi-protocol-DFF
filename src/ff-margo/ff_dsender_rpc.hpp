@@ -229,8 +229,10 @@ protected:
 
 
     void init_ABT() {
+    #ifdef INIT_CUSTOM
         margo_set_environment(NULL);
         ABT_init(0, NULL);
+    #endif
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
             ABT_FALSE, &pool_e1);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
@@ -255,7 +257,8 @@ protected:
             .hg_init_info  = &info      /* struct hg_init_info* */
         };
 
-        *mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
+        // *mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
+        *mid = margo_init(proto, MARGO_CLIENT_MODE, 1, -1);
         assert(*mid != MARGO_INSTANCE_NULL);
     }
 
@@ -329,7 +332,9 @@ public:
         for(size_t i=0; i < this->sockets.size(); i++)
             close(sockets[i]);
 
+    #ifdef INIT_CUSTOM
         ABT_finalize();
+    #endif
     }
 
     message_t *svc(message_t* task) {
@@ -409,14 +414,30 @@ public:
         std::string gName = "", std::set<std::string> internalGroups = {},
         int coreid = -1, int busy = 1):
             ff_dsenderRPC(e, endRPC, gName, coreid, busy),
-            internalGroups(std::move(internalGroups)) {}
+            internalGroups(std::move(internalGroups)) {
+        
+        // After having initialized the mid instances in the base constructor
+        // depending on the different protocols, we register for the same mid
+        // the set of RPCs needed for internal communications
+        for (auto &el: proto2Margo)
+        {
+            register_rpcs(el.second);
+        }
+        
+    }
     
     ff_dsenderRPCH(std::vector<ff_endpoint> dest_endpoints_,
         std::vector<ff_endpoint_rpc*> endRPC = {},
         std::string gName = "", std::set<std::string> internalGroups = {},
         int coreid=-1, int busy = 1):
             ff_dsenderRPC(dest_endpoints_, endRPC, gName, coreid, busy),
-            internalGroups(std::move(internalGroups)) {}
+            internalGroups(std::move(internalGroups)) {
+        
+        for (auto &el: proto2Margo)
+        {
+            register_rpcs(el.second);
+        }
+    }
 
 
     int svc_init() {

@@ -58,8 +58,10 @@ class ff_dreceiverRPC: public ff_monode_t<message_t> {
 protected:
 
     void init_ABT() {
+        #ifdef INIT_CUSTOM
         margo_set_environment(NULL);
         ABT_init(0, NULL);
+        #endif
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
             ABT_FALSE, &pool_e1);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
@@ -279,7 +281,11 @@ public:
         #ifdef LOCAL
             unlink(this->acceptAddr.address.c_str());
         #endif
+        
+        #ifdef INIT_CUSTOM
         ABT_finalize();
+        #endif
+
     }
     /* 
         Here i should not care of input type nor input data since they come from a socket listener.

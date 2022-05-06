@@ -138,8 +138,8 @@ int main(int argc, char*argv[]){
         std::cerr << "Execute with the index of process!" << std::endl;
         return 1;
     }
-    // margo_set_environment(NULL);
-    // ABT_init(0, NULL);
+    margo_set_environment(NULL);
+    ABT_init(0, NULL);
 
     /* --- TCP HANDSHAKE ENDPOINTS --- */
     ff_endpoint g1("127.0.0.1", 56001);
@@ -228,6 +228,6 @@ int main(int argc, char*argv[]){
     }
     gFarm.add_workers({&a2a});
     gFarm.run_and_wait_end();
-    // ABT_finalize();
+    ABT_finalize();
 	return 0;
 }
