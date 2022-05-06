@@ -42,7 +42,7 @@
 #include <margo.h>
 #include <abt.h>
 
-#include "dist_rpc_type.h"
+// #include "dist_rpc_type.h"
 
 using namespace ff;
 
@@ -229,6 +229,8 @@ protected:
 
 
     void init_ABT() {
+        margo_set_environment(NULL);
+        ABT_init(0, NULL);
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
             ABT_FALSE, &pool_e1);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
@@ -238,15 +240,19 @@ protected:
     void init_mid(const char* proto, margo_instance_id* mid) {
         na_init_info na_info;
         na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
+        na_info.max_contexts = 1;
 
         hg_init_info info = {
             .na_init_info = na_info
         };
 
         margo_init_info args = {
-            .progress_pool  = pool_e1,
-            .rpc_pool       = pool_e1,
-            .hg_init_info   = &info
+            .json_config   = NULL,      /* const char*          */
+            .progress_pool = pool_e1,   /* ABT_pool             */
+            .rpc_pool      = pool_e1,   /* ABT_pool             */
+            .hg_class      = NULL,      /* hg_class_t*          */
+            .hg_context    = NULL,      /* hg_context_t*        */
+            .hg_init_info  = &info      /* struct hg_init_info* */
         };
 
         *mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
@@ -322,6 +328,8 @@ public:
         // close the socket not matter if local or remote
         for(size_t i=0; i < this->sockets.size(); i++)
             close(sockets[i]);
+
+        ABT_finalize();
     }
 
     message_t *svc(message_t* task) {
@@ -418,7 +426,7 @@ public:
 			ff_mapThreadToCpu(coreid);
 
         sockets.resize(this->dest_endpoints.size());
-        for (int i = 0; i < this->dest_endpoints.size(); i++)
+        for (size_t i = 0; i < this->dest_endpoints.size(); i++)
         {
             int sck = tryConnect(this->dest_endpoints[i]);
             if (sck <= 0) {
@@ -463,8 +471,17 @@ public:
         }
 
         ff_dsenderRPC::svc(task);
-        
+        return this->GO_ON;
+    }
 
+    void svc_end() {
+        for (auto &&mid : proto2Margo)
+        {
+            margo_finalize(*mid.second);
+        }
+        finalize_xstream_cb(xstream_e1);
+        ABT_pool_free(&pool_e1);
+        
     }
 
     void eosnotify(ssize_t id) {

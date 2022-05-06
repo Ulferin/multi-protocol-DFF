@@ -42,6 +42,10 @@
 #include <mutex>
 #include <map>
 
+#include <ff/distributed/ff_drpc_types.h>
+#include "ff_dsender_rpc.hpp"
+#include "ff_dreceiver_rpc.hpp"
+
 using namespace ff;
 std::mutex mtx;
 
@@ -134,28 +138,47 @@ int main(int argc, char*argv[]){
         std::cerr << "Execute with the index of process!" << std::endl;
         return 1;
     }
+    // margo_set_environment(NULL);
+    // ABT_init(0, NULL);
 
-    ff_endpoint g1("127.0.0.1", 8001);
+    /* --- TCP HANDSHAKE ENDPOINTS --- */
+    ff_endpoint g1("127.0.0.1", 56001);
     g1.groupName = "G1";
 
-    ff_endpoint g2("127.0.0.1", 8002);
+    ff_endpoint g2("127.0.0.1", 56002);
     g2.groupName = "G2";
 
-    ff_endpoint g3("127.0.0.1", 8003);
+    ff_endpoint g3("127.0.0.1", 56003);
     g3.groupName = "G3";
+    /* --- TCP HANDSHAKE ENDPOINTS --- */
+
+    /* --- RPC ENDPOINTS --- */
+    //NOTE: they all default to "ofi+tcp" plugin+protocol
+    ff_endpoint_rpc G0toG1_rpc("127.0.0.1", 56000);
+    ff_endpoint_rpc G2toG1_rpc("127.0.0.1", 57000);
+
+    ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 58000);
+    ff_endpoint_rpc G1toG2_rpc("127.0.0.1", 59000);
+
+    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 60000);
+    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 61000);
+    /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;
     ff_a2a a2a;
 
     if (atoi(argv[1]) == 0){
-        gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));
+        // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));
+        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0"));
         gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
 
         gFarm.run_and_wait_end();
         return 0;
     } else if (atoi(argv[1]) == 1){
-        gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}, {0,1}, {"G2"}));
-        gFarm.add_collector(new ff_dsenderH({g2,g3}, "G1", {"G2"}));
+        // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}, {0,1}, {"G2"}));
+        // gFarm.add_collector(new ff_dsenderH({g2,g3}, "G1", {"G2"}));
+        gFarm.add_emitter(new ff_dreceiverRPCH(g1, {&G0toG1_rpc, &G2toG1_rpc}, 2, {{0, 0}}, {0,1}, {"G2"}));
+        gFarm.add_collector(new ff_dsenderRPCH({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}));
 
 		auto s = new Lnode(4,0);
 		
@@ -172,8 +195,10 @@ int main(int argc, char*argv[]){
 									new SquareBoxRight});  // this box should be the last one!
 
     } else if (atoi(argv[1]) == 2) {
-        gFarm.add_emitter(new ff_dreceiverH(g2, 2, {{1, 0}}, {2,3}, {"G1"}));
-        gFarm.add_collector(new ff_dsenderH({g1, g3}, "G2", {"G1"}));
+        // gFarm.add_emitter(new ff_dreceiverH(g2, 2, {{1, 0}}, {2,3}, {"G1"}));
+        // gFarm.add_collector(new ff_dsenderH({g1, g3}, "G2", {"G1"}));
+        gFarm.add_emitter(new ff_dreceiverRPCH(g2, {&G0toG2_rpc, &G1toG2_rpc}, 2, {{1, 0}}, {2,3}, {"G1"}));
+        gFarm.add_collector(new ff_dsenderRPCH({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}));
 
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
@@ -194,7 +219,8 @@ int main(int argc, char*argv[]){
 			                        }, true);		
         
     } else {
-        gFarm.add_emitter(new ff_dreceiver(g3, 2));
+        // gFarm.add_emitter(new ff_dreceiver(g3, 2));
+        gFarm.add_emitter(new ff_dreceiverRPC(g3, {&G1toG3_rpc, &G2toG3_rpc}, 2));
 		gFarm.add_workers({new WrapperIN(new Sink(), 1, true)});
 		
 		gFarm.run_and_wait_end();
@@ -202,6 +228,6 @@ int main(int argc, char*argv[]){
     }
     gFarm.add_workers({&a2a});
     gFarm.run_and_wait_end();
-
+    // ABT_finalize();
 	return 0;
 }
