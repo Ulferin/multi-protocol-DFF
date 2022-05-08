@@ -69,9 +69,8 @@ protected:
     }
 
     void init_mid(const char* address, margo_instance_id* mid) {
-        na_init_info na_info;
+        na_init_info na_info = NA_INIT_INFO_INITIALIZER;
         na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
-        na_info.max_contexts = 1;
 
         hg_init_info info = {
             .na_init_info = na_info
@@ -262,8 +261,9 @@ public:
 
         #endif
 
-        if (bind(listen_sck, (struct sockaddr*)&serv_addr,sizeof(serv_addr)) < 0){
-            error("Error binding\n");
+        int bind_err;
+        if ((bind_err = bind(listen_sck, (struct sockaddr*)&serv_addr,sizeof(serv_addr))) < 0){
+            error("Error binding: %d\n", bind_err);
             return -1;
         }
 

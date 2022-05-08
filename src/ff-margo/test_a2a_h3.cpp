@@ -139,16 +139,17 @@ int main(int argc, char*argv[]){
         return 1;
     }
     margo_set_environment(NULL);
+    // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
     /* --- TCP HANDSHAKE ENDPOINTS --- */
-    ff_endpoint g1("127.0.0.1", 56001);
+    ff_endpoint g1("127.0.0.1", 35000);
     g1.groupName = "G1";
 
-    ff_endpoint g2("127.0.0.1", 56002);
+    ff_endpoint g2("127.0.0.1", 36000);
     g2.groupName = "G2";
 
-    ff_endpoint g3("127.0.0.1", 56003);
+    ff_endpoint g3("127.0.0.1", 37000);
     g3.groupName = "G3";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
@@ -169,10 +170,11 @@ int main(int argc, char*argv[]){
 
     if (atoi(argv[1]) == 0){
         // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));
-        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0"));
         gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
+        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0"));
 
         gFarm.run_and_wait_end();
+        ABT_finalize();
         return 0;
     } else if (atoi(argv[1]) == 1){
         // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}, {0,1}, {"G2"}));
@@ -224,6 +226,7 @@ int main(int argc, char*argv[]){
 		gFarm.add_workers({new WrapperIN(new Sink(), 1, true)});
 		
 		gFarm.run_and_wait_end();
+        ABT_finalize();
 		return 0;
     }
     gFarm.add_workers({&a2a});

@@ -67,7 +67,7 @@ int main(int argc, char** argv)
     }
 
     margo_set_environment(NULL);
-    // margo_set_global_log_level(MARGO_LOG_TRACE);
+    margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
     std::vector<char*> addresses;

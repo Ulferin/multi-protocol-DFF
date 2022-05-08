@@ -58,16 +58,15 @@ protected:
         in.task = new message_t(task->data.getPtr(), task->data.getLen(), true);
         in.task->chid = task->chid;
         in.task->sender = task->sender;
-        delete task;
+        // delete task;
 
-        std::string proto((*endp).margo_addr.c_str());
-        assert(proto.c_str());
-        size_t colon = proto.find_first_of(':');
-        proto.resize(colon);
+        const char* proto = endp->protocol.c_str();
+        printf("Trying to send task to: %s\n", endp->margo_addr.c_str());
 
-        margo_addr_lookup(*proto2Margo[proto.c_str()], endp->margo_addr.c_str(), &svr_addr);
+        margo_addr_lookup(*proto2Margo[proto], endp->margo_addr.c_str(), &svr_addr);
+        assert(svr_addr);
 
-        margo_create(*proto2Margo[proto.c_str()], svr_addr, rpc_id, &h);
+        margo_create(*proto2Margo[proto], svr_addr, rpc_id, &h);
         margo_forward(h, &in);
         margo_destroy(h);
         delete in.task;
@@ -229,20 +228,15 @@ protected:
 
 
     void init_ABT() {
-    #ifdef INIT_CUSTOM
-        margo_set_environment(NULL);
-        ABT_init(0, NULL);
-    #endif
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
             ABT_FALSE, &pool_e1);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
             ABT_SCHED_CONFIG_NULL, &xstream_e1);
     }
 
-    void init_mid(const char* proto, margo_instance_id* mid) {
-        na_init_info na_info;
+    void init_mid(char* proto, margo_instance_id* mid) {
+        na_init_info na_info = NA_INIT_INFO_INITIALIZER;
         na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
-        na_info.max_contexts = 1;
 
         hg_init_info info = {
             .na_init_info = na_info
@@ -257,8 +251,7 @@ protected:
             .hg_init_info  = &info      /* struct hg_init_info* */
         };
 
-        // *mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
-        *mid = margo_init(proto, MARGO_CLIENT_MODE, 1, -1);
+        *mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
         assert(*mid != MARGO_INSTANCE_NULL);
     }
 
@@ -275,23 +268,23 @@ protected:
 
     void startup() {
         init_ABT();
-        for (auto &&addr: endRPC)
+        for (auto &&endp: endRPC)
         {
             // We don't care about the address used for this mid, we only need
             // the same protocol used by the endpoint to contact
-            std::string proto((*addr).margo_addr.c_str());
-            assert(proto.c_str());
-            size_t colon = proto.find_first_of(':');
-            proto.resize(colon);
+            char* proto;
+            proto = strdup(endp->protocol.c_str());
             
             // We only create a new mid if there is still no margo instance
             // using this protocol
             if(proto2Margo.find(proto) == proto2Margo.end()) {
                 margo_instance_id* mid = new margo_instance_id();
-                init_mid(proto.c_str(), mid);
+                init_mid(proto, mid);
                 register_rpcs(mid);
-                proto2Margo.insert({proto.c_str(), mid});
+                proto2Margo.insert({proto, mid});
             }
+
+            free(proto);
         }
     }
 
@@ -300,7 +293,9 @@ public:
         std::string gName = "", int coreid = -1, int busy = 1):
             gName(gName), coreid(coreid),
             endRPC(std::move(endRPC)), busy(busy) {
+        
         this->dest_endpoints.push_back(std::move(dest_endpoint));
+        startup();
     }
 
 
@@ -308,12 +303,14 @@ public:
         std::vector<ff_endpoint_rpc*> endRPC = {},
         std::string gName = "", int coreid=-1, int busy = 1):
             dest_endpoints(std::move(dest_endpoints_)), gName(gName),
-            coreid(coreid), endRPC(std::move(endRPC)), busy(busy) {}
+            coreid(coreid), endRPC(std::move(endRPC)), busy(busy) {
+        
+        startup();
+    }
 
 
     //NOTE: heritage from ff_dsender in order to perform handshake with receiver
     int svc_init() {
-        startup();
 		if (coreid!=-1)
 			ff_mapThreadToCpu(coreid);
 		
@@ -332,9 +329,12 @@ public:
         for(size_t i=0; i < this->sockets.size(); i++)
             close(sockets[i]);
 
-    #ifdef INIT_CUSTOM
-        ABT_finalize();
-    #endif
+        for (auto &&mid : proto2Margo)
+        {
+            margo_finalize(*mid.second);
+        }
+        finalize_xstream_cb(xstream_e1);
+        ABT_pool_free(&pool_e1);
     }
 
     message_t *svc(message_t* task) {
@@ -441,7 +441,6 @@ public:
 
 
     int svc_init() {
-        startup();
        
         if (coreid!=-1)
 			ff_mapThreadToCpu(coreid);
@@ -496,13 +495,11 @@ public:
     }
 
     void svc_end() {
-        for (auto &&mid : proto2Margo)
-        {
-            margo_finalize(*mid.second);
+        for(size_t i=0; i<this->internalSockets.size(); i++) {
+            close(internalSockets[i]);
         }
-        finalize_xstream_cb(xstream_e1);
-        ABT_pool_free(&pool_e1);
-        
+
+        ff_dsenderRPC::svc_end();
     }
 
     void eosnotify(ssize_t id) {

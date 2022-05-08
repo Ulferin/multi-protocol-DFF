@@ -148,7 +148,7 @@ public:
 
 
 // TODO: define this as a templated class
-class senderStage: public ff_node_t<float> {
+class senderStage: public ff_minode_t<float> {
 
 private:
     char*                   addr;
