@@ -345,13 +345,12 @@ public:
         finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
         return this->EOS;
-
-        return this->EOS;
     }
 
     // Necessary to access internal fields in the RPC callbacks
     friend void ff_rpc(hg_handle_t handle);
     friend void ff_rpc_shutdown(hg_handle_t handle);
+    friend void ff_rpc_shutdown_internal(hg_handle_t handle);
 
 protected:
     ff_endpoint                     handshakeAddr;	
@@ -392,6 +391,7 @@ protected:
     }
 
     void registerEOS(bool internal) {
+        printf("[registerEOS] - checking termination...\n");
         ff_dreceiverRPC::registerEOS(internal);
         // NOTE: the internalConn variable can be saved once and for all at the end
         //      of the handshake process. This will not change once we have received
@@ -525,6 +525,7 @@ public:
     }
 
     // Necessary to access internal fields in the RPC callbacks
+    friend void ff_rpc_shutdown(hg_handle_t handle);
     friend void ff_rpc_shutdown_internal(hg_handle_t handle);
 
 protected:
@@ -552,7 +553,6 @@ void ff_rpc(hg_handle_t handle) {
     ff_dreceiverRPC* receiver =
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
 
-    printf("[EXTERNAL] sending to next node: %d -- %d\n", in.task->chid, in.task->sender);
     receiver->ff_send_out_to(in.task, receiver->routingTable[in.task->chid]);
     printf("[EXTERNAL] sent to next node: %d -- %d\n", in.task->chid, in.task->sender);
 
@@ -581,7 +581,6 @@ void ff_rpc_internal(hg_handle_t handle) {
     ff_dreceiverRPCH* receiver =
         (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
 
-    printf("[INTERNAL] sending to next node: %d -- %d\n", in.task->chid, in.task->sender);
     receiver->ff_send_out_to(in.task, receiver->get_num_outchannels()-1);
     printf("[INTERNAL] sent to next node: %d -- %d\n", in.task->chid, in.task->sender);
 
@@ -605,9 +604,16 @@ void ff_rpc_shutdown(hg_handle_t handle) {
     ff_dreceiverRPC* receiver =
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
     
-    printf("[EXTERNAL] received shutdown\n");
-    receiver->registerEOS(false);
-    printf("[EXTERNAL] signaled shutdown\n");
+    //NOTE: probably not the best-looking solution to handle this. Check about
+    //      virtual functions and how they can be used to handle polymorphism
+    ff_dreceiverRPCH* receiverH = dynamic_cast<ff_dreceiverRPCH*>(receiver);
+
+    if(receiverH)
+        receiverH->registerEOS(false);
+    else
+        receiver->registerEOS(false);
+
+    printf("[EXTERNAL] signaled shutdown. Current EOS count is: %ld\n", receiver->neos);
 
     margo_destroy(handle);
 
@@ -629,9 +635,8 @@ void ff_rpc_shutdown_internal(hg_handle_t handle) {
     ff_dreceiverRPCH* receiver =
         (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
     
-    printf("[INTERNAL] signaled shutdown\n");
     receiver->registerEOS(true);
-    printf("[INTERNAL] signaled shutdown\n");
+    printf("[INTERNAL] signaled shutdown. Current EOS count is: %ld\n",receiver->neos);
 
     margo_destroy(handle);
 
