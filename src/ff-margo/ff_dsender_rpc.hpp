@@ -30,6 +30,8 @@
 //TODO: update file description
 //TODO: potentially we want to remove the dependence from the original sender
 //      and receiver of FastFlow and use this instead.
+//TODO: controllare tutte le variabili aggiornate all'interno delle RPC perché
+//      potrei avere delle race condition
 
 
 #include <iostream>
@@ -361,9 +363,8 @@ public:
         message_t E_O_S(0,0);
         hg_id_t rpc_id;
         ff_endpoint_rpc* endp;
-        if (++neos >= this->get_num_inchannels()){
+        if (neos >= this->get_num_inchannels()){
             for(const auto& sck : sockets) {
-                sendToSck(sck, &E_O_S);
                 rpc_id = ff_eshutdown_id;
                 endp = sock2End[sck];
                 forwardRequest(&E_O_S, rpc_id, endp);
@@ -515,10 +516,11 @@ public:
     }
 
     void eosnotify(ssize_t id) {
-        message_t E_O_S(0,0);
-        hg_id_t rpc_id;
-        ff_endpoint_rpc* endp;
         if (id == (ssize_t)(this->get_num_inchannels() - 1)){
+            message_t E_O_S(0,0);
+            hg_id_t rpc_id;
+            ff_endpoint_rpc* endp;
+
             // send the EOS to all the internal connections
             for(const auto& sck : internalSockets) {
                 rpc_id = ff_ishutdown_id;
