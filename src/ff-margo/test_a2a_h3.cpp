@@ -86,6 +86,7 @@ struct Lnode : ff_monode_t<myTask_t>{
 
     myTask_t* svc(myTask_t* in){
         std::cout << "Lnode " << generatorID << "( " << get_my_id() << ") starting generating tasks!" << std::endl;
+        printf("[LNode-%d] just received message: %s\n", generatorID, in->str.c_str());
         for(int i = 0; i < numWorker; i++) {
 			myTask_t* out = new myTask_t;
 			out->str = std::string(std::string("Task" + std::to_string(i) + " generated from " + std::to_string(generatorID) + " for " + std::to_string(i)));
@@ -105,6 +106,7 @@ struct Rnode : ff_minode_t<myTask_t>{
     int ID;
     Rnode(int id): ID(id) {}
     myTask_t* svc(myTask_t* in){
+        printf("[RNode-%d] just received message: %s\n", ID, in->str.c_str());
         in->str =std::string(std::string(in->str + " received by Rnode " + std::to_string(ID) + " from channel " +  std::to_string(get_channel_id())));
         return in;
     }
@@ -143,26 +145,27 @@ int main(int argc, char*argv[]){
     ABT_init(0, NULL);
 
     /* --- TCP HANDSHAKE ENDPOINTS --- */
-    ff_endpoint g1("127.0.0.1", 35000);
+    ff_endpoint g1("127.0.0.1", 35537);
     g1.groupName = "G1";
 
-    ff_endpoint g2("127.0.0.1", 36000);
+    ff_endpoint g2("127.0.0.1", 36537);
     g2.groupName = "G2";
 
-    ff_endpoint g3("127.0.0.1", 37000);
+    ff_endpoint g3("127.0.0.1", 37537);
     g3.groupName = "G3";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
+
     /* --- RPC ENDPOINTS --- */
     //NOTE: they all default to "ofi+tcp" plugin+protocol
-    ff_endpoint_rpc G0toG1_rpc("127.0.0.1", 56000);
-    ff_endpoint_rpc G2toG1_rpc("127.0.0.1", 57000);
+    ff_endpoint_rpc G0toG1_rpc("127.0.0.1", 56537, "ofi+sockets");
+    ff_endpoint_rpc G2toG1_rpc("127.0.0.1", 57537, "ofi+sockets");
 
-    ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 58000);
-    ff_endpoint_rpc G1toG2_rpc("127.0.0.1", 59000);
+    ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 58537, "ofi+sockets");
+    ff_endpoint_rpc G1toG2_rpc("127.0.0.1", 59537, "ofi+sockets");
 
-    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 60000);
-    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 61000);
+    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 60537, "ofi+sockets");
+    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 61537, "ofi+sockets");
     /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;

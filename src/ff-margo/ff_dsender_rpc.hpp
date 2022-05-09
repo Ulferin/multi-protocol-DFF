@@ -42,7 +42,8 @@
 #include <margo.h>
 #include <abt.h>
 
-// #include "dist_rpc_type.h"
+//TODO: check for delete calls missing in svc method or some protocol retrieval
+//      via strdup
 
 using namespace ff;
 
@@ -51,6 +52,7 @@ class ff_dsenderRPC: public ff_minode_t<message_t> {
 protected:    
 
     void forwardRequest(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
+        this->rpc_sent++;
         hg_handle_t h;
         hg_addr_t svr_addr;
         
@@ -335,6 +337,8 @@ public:
         }
         finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
+
+        printf("I've sent %d\n", this->rpc_sent);
     }
 
     message_t *svc(message_t* task) {
@@ -367,7 +371,8 @@ public:
         }
     }
 
-
+public:
+    int                                         rpc_sent = 0;
 protected:
 
     // From ff_dsender
@@ -406,6 +411,12 @@ protected:
         ff_ishutdown_id = MARGO_REGISTER(*mid, "ff_rpc_shutdown_internal",
                 void, void, NULL);
         margo_registered_disable_response(*mid, ff_ishutdown_id, HG_TRUE);
+    }
+
+    int handshakeHandler(const int sck, bool isInternal){
+        if (sendGroupName(sck) < 0) return -1;
+
+        return receiveReachableDestinations(sck, isInternal ? internalDest2Socket : dest2Socket);
     }
 
 
@@ -462,6 +473,7 @@ public:
             //      the saved handle can then be used in the communications
             //      involving this "socket" descriptor
             handshakeHandler(sck, isInternal);
+            printf("Binding socket(%d) to endpoint (%s)\n", sck, endRPC[i]->margo_addr.c_str());
             sock2End.insert({sck, endRPC[i]});
         }
 

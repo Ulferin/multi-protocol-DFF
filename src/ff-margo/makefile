@@ -1,5 +1,5 @@
 CXX = g++-10
-CXXFLAGS = -Wall -g -O3 -std=c++20 -fno-inline-functions
+CXXFLAGS = -Wall -g -O0 -std=c++20 -fno-inline-functions
 
 FF_ROOT = ${HOME}/includes/fastflow/
 CEREAL_ROOT = ${HOME}/includes/cereal-1.3.2/include/

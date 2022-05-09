@@ -263,7 +263,7 @@ public:
 
         int bind_err;
         if ((bind_err = bind(listen_sck, (struct sockaddr*)&serv_addr,sizeof(serv_addr))) < 0){
-            error("Error binding: %d\n", bind_err);
+            error("Error binding: %d -- %s\n", bind_err, strerror(errno));
             return -1;
         }
 
@@ -552,7 +552,9 @@ void ff_rpc(hg_handle_t handle) {
     ff_dreceiverRPC* receiver =
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
 
+    printf("[EXTERNAL] sending to next node: %d -- %d\n", in.task->chid, in.task->sender);
     receiver->ff_send_out_to(in.task, receiver->routingTable[in.task->chid]);
+    printf("[EXTERNAL] sent to next node: %d -- %d\n", in.task->chid, in.task->sender);
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
@@ -579,7 +581,9 @@ void ff_rpc_internal(hg_handle_t handle) {
     ff_dreceiverRPCH* receiver =
         (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
 
+    printf("[INTERNAL] sending to next node: %d -- %d\n", in.task->chid, in.task->sender);
     receiver->ff_send_out_to(in.task, receiver->get_num_outchannels()-1);
+    printf("[INTERNAL] sent to next node: %d -- %d\n", in.task->chid, in.task->sender);
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
@@ -601,7 +605,9 @@ void ff_rpc_shutdown(hg_handle_t handle) {
     ff_dreceiverRPC* receiver =
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
     
+    printf("[EXTERNAL] received shutdown\n");
     receiver->registerEOS(false);
+    printf("[EXTERNAL] signaled shutdown\n");
 
     margo_destroy(handle);
 
@@ -622,8 +628,10 @@ void ff_rpc_shutdown_internal(hg_handle_t handle) {
 
     ff_dreceiverRPCH* receiver =
         (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
-
+    
+    printf("[INTERNAL] signaled shutdown\n");
     receiver->registerEOS(true);
+    printf("[INTERNAL] signaled shutdown\n");
 
     margo_destroy(handle);
 
