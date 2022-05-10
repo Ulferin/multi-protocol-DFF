@@ -363,7 +363,7 @@ public:
         message_t E_O_S(0,0);
         hg_id_t rpc_id;
         ff_endpoint_rpc* endp;
-        if (neos >= this->get_num_inchannels()){
+        if (++neos >= this->get_num_inchannels()){
             for(const auto& sck : sockets) {
                 rpc_id = ff_eshutdown_id;
                 endp = sock2End[sck];
@@ -457,7 +457,6 @@ public:
         if (coreid!=-1)
 			ff_mapThreadToCpu(coreid);
 
-        sockets.resize(this->dest_endpoints.size());
         for (size_t i = 0; i < this->dest_endpoints.size(); i++)
         {
             int sck = tryConnect(this->dest_endpoints[i]);

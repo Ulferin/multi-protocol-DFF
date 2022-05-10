@@ -396,10 +396,11 @@ protected:
         // NOTE: the internalConn variable can be saved once and for all at the end
         //      of the handshake process. This will not change once we have received
         //      all connection requests
+        printf("Counting internal connection number...\n");
         size_t internalConn = std::count_if(std::begin(isInternalConnection),
                                         std::end  (isInternalConnection),
                                         [](std::pair<int, bool> const &p) {return p.second;});
-
+        printf("Found %d internal connections\n", internalConn);
         
         if(!internal) {
             if (++externalNEos == (isInternalConnection.size()-internalConn))
