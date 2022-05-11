@@ -87,6 +87,7 @@ protected:
 
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
         assert(*mid != MARGO_INSTANCE_NULL);
+        // margo_set_log_level(*mid, MARGO_LOG_TRACE);
 
         // Check if the listening address is the requested one
         char addr_self_string[128];
@@ -100,11 +101,13 @@ protected:
         // NOTE: we actually want a response in the non-blocking version
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, this, NULL);
+        printf("[REGISTER] registered external rpc with id: %ld\n", id);
 
         id = MARGO_REGISTER(*mid, "ff_rpc_shutdown",
                 void, void, ff_rpc_shutdown);
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, this, NULL);
+        printf("[REGISTER] registered external shutdown with id: %ld\n", id);
     }
 
     static int sendRoutingTable(const int sck, const std::vector<int>& dest){
@@ -153,9 +156,7 @@ protected:
     }
 
     void registerEOS(bool) {
-        neos++;    
-
-        if(neos == input_channels)
+        if(++neos == input_channels)
             for (auto &&mid : mids)
             {
                 margo_finalize(*mid);
@@ -377,38 +378,32 @@ protected:
 class ff_dreceiverRPCH: public ff_dreceiverRPC {
 protected:
     void register_rpcs(margo_instance_id* mid) {
-        ff_dreceiverRPC::register_rpcs(mid);
-
         hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc_internal",
                 ff_rpc_in_t, void, ff_rpc_internal);
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, this, NULL);
+        printf("[REGISTER] registered internal rpc with id: %ld\n", id);
 
         id = MARGO_REGISTER(*mid, "ff_rpc_shutdown_internal",
                 void, void, ff_rpc_shutdown_internal);
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, this, NULL);
+        printf("[REGISTER] registered internal shutdown with id: %ld\n", id);
     }
 
     void registerEOS(bool internal) {
-        printf("[registerEOS] - checking termination...\n");
-        ff_dreceiverRPC::registerEOS(internal);
         // NOTE: the internalConn variable can be saved once and for all at the end
         //      of the handshake process. This will not change once we have received
         //      all connection requests
-        printf("Counting internal connection number...\n");
-        size_t internalConn = std::count_if(std::begin(isInternalConnection),
-                                        std::end  (isInternalConnection),
-                                        [](std::pair<int, bool> const &p) {return p.second;});
-        printf("Found %d internal connections\n", internalConn);
-        
         if(!internal) {
-            if (++externalNEos == (isInternalConnection.size()-internalConn))
+            if (++externalNEos == (input_channels-internalConnections))
                 for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
         } else {
-            if (++internalNEos == internalConn)
+            if (++internalNEos == internalConnections)
                 ff_send_out_to(this->EOS, get_num_outchannels()-1);
         }
+
+        ff_dreceiverRPC::registerEOS(internal);
             
     }
 
@@ -428,10 +423,11 @@ protected:
         }
         
         bool internalGroup = internalGroupsNames.contains(std::string(groupName,size));
-
         isInternalConnection[sck] = internalGroup; // save somewhere the fact that this sck represent an internal connection
+        printf("[HSK] sck:%d -- intgroup: %d -- internalConns:%ld\n", sck, internalGroup, internalConnections);
 
         if (internalGroup) return this->sendRoutingTable(sck, internalDestinations);
+
 
         std::vector<int> reachableDestinations;
         for(const auto& [key, value] :  this->routingTable) reachableDestinations.push_back(key);
@@ -457,7 +453,7 @@ public:
                 coreid, busy),
             internalDestinations(internalDestinations),
             internalGroupsNames(internalGroupsNames) {
-        
+        internalConnections = this->internalGroupsNames.size();
         // Registering internal version of already initialized mids by base
         // constructor
         for (auto &&mid: this->mids)
@@ -532,6 +528,7 @@ public:
 protected:
     std::vector<int> internalDestinations;
     std::map<int, bool> isInternalConnection;
+    size_t internalConnections = 0;
     std::set<std::string> internalGroupsNames;
     size_t internalNEos = 0, externalNEos = 0;
 };
@@ -555,7 +552,7 @@ void ff_rpc(hg_handle_t handle) {
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
 
     receiver->ff_send_out_to(in.task, receiver->routingTable[in.task->chid]);
-    printf("[EXTERNAL] sent to next node: %d -- %d\n", in.task->chid, in.task->sender);
+    printf("[RPC_IN: EXT] sent to next node: %d -- %d\n", in.task->chid, in.task->sender);
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
@@ -583,7 +580,7 @@ void ff_rpc_internal(hg_handle_t handle) {
         (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
 
     receiver->ff_send_out_to(in.task, receiver->get_num_outchannels()-1);
-    printf("[INTERNAL] sent to next node: %d -- %d\n", in.task->chid, in.task->sender);
+    printf("[RPC_IN: INT] sent to next node: %d -- %d\n", in.task->chid, in.task->sender);
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
@@ -614,7 +611,7 @@ void ff_rpc_shutdown(hg_handle_t handle) {
     else
         receiver->registerEOS(false);
 
-    printf("[EXTERNAL] signaled shutdown. Current EOS count is: %ld\n", receiver->neos);
+    printf("[RPC_IN: EXT] signaled shutdown. Current EOS count is: %ld\n", receiver->neos);
 
     margo_destroy(handle);
 
@@ -637,7 +634,7 @@ void ff_rpc_shutdown_internal(hg_handle_t handle) {
         (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
     
     receiver->registerEOS(true);
-    printf("[INTERNAL] signaled shutdown. Current EOS count is: %ld\n",receiver->neos);
+    printf("[RPC_IN: INT] signaled shutdown. Current EOS count is: %ld\n",receiver->neos);
 
     margo_destroy(handle);
 

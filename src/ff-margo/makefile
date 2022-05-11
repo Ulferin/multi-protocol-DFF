@@ -25,7 +25,7 @@ ff_g2.out: ff_g2.cpp $(DEPS)
 ff_g3.out: ff_g3.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
 
-margo_ff_test.out: test_a2a_h3.cpp
+margo_ff_test.out: test_a2a_h3.cpp ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp $(FF_ROOT)ff/distributed/ff_drpc_types.h $(FF_ROOT)ff/distributed/ff_dutils.hpp
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)
 
 clean:

@@ -69,7 +69,7 @@ struct myTask_t {
 
 struct Source : ff_monode_t<myTask_t>{
     myTask_t* svc(myTask_t*){
-        for(int i = 0; i < 100; i++) {
+        for(int i = 0; i < 1000; i++) {
 			myTask_t* task = new myTask_t;
 			task->str="Hello";
 			task->S.t = i;
@@ -98,6 +98,10 @@ struct Lnode : ff_monode_t<myTask_t>{
 		delete in;
         std::cout << "Lnode " << generatorID << " generated all task sending now EOS!" << std::endl;
         return GO_ON;
+    }
+
+    void svc_end() {
+        printf("Terminating LNode. Received EOS.\n");
     }
 };
 
@@ -157,7 +161,10 @@ int main(int argc, char*argv[]){
 
 
     /* --- RPC ENDPOINTS --- */
-    //NOTE: they all default to "ofi+tcp" plugin+protocol
+    //TODO: ff_endpoint_rpc in current state in only able to deal with
+    //      plugin+protocol pairs that accept a "port" field. This is not the
+    //      case, for example, for na+sm, which has problems in managing the
+    //      "protocol" field.
     ff_endpoint_rpc G0toG1_rpc("127.0.0.1", 56537, "ofi+sockets");
     ff_endpoint_rpc G2toG1_rpc("127.0.0.1", 57537, "ofi+sockets");
 

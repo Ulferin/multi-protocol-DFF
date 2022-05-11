@@ -36,6 +36,7 @@
 
 #include <iostream>
 #include <vector>
+#include <thread>
 
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
@@ -53,27 +54,40 @@ using namespace ff;
 class ff_dsenderRPC: public ff_minode_t<message_t> {
 protected:    
 
-    void forwardRequest(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
-        this->rpc_sent++;
+    hg_handle_t shipRPC(ff_endpoint_rpc* endp, hg_id_t& rpc_id) {
         hg_handle_t h;
         hg_addr_t svr_addr;
+
+        const char* proto = endp->protocol.c_str();
+        margo_addr_lookup(*proto2Margo[proto], endp->margo_addr.c_str(), &svr_addr);
+        assert(svr_addr);
+
+        margo_create(*proto2Margo[proto], svr_addr, rpc_id, &h);
+
+        return h;
+    }
+
+    void forwardRequest(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
+        this->rpc_sent++;
         
         ff_rpc_in_t in;
         in.task = new message_t(task->data.getPtr(), task->data.getLen(), true);
         in.task->chid = task->chid;
         in.task->sender = task->sender;
-        // delete task;
 
-        const char* proto = endp->protocol.c_str();
-        printf("Trying to send task to: %s\n", endp->margo_addr.c_str());
-
-        margo_addr_lookup(*proto2Margo[proto], endp->margo_addr.c_str(), &svr_addr);
-        assert(svr_addr);
-
-        margo_create(*proto2Margo[proto], svr_addr, rpc_id, &h);
+        hg_handle_t h = shipRPC(endp, rpc_id);
         margo_forward(h, &in);
         margo_destroy(h);
+        
         delete in.task;
+    }
+
+    void forwardEOS(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
+        this->rpc_sent++;
+
+        hg_handle_t h = shipRPC(endp, rpc_id);
+        margo_forward(h, NULL);
+        margo_destroy(h);
     }
 
     int receiveReachableDestinations(int sck, std::map<int,int>& m){
@@ -257,6 +271,7 @@ protected:
 
         *mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
         assert(*mid != MARGO_INSTANCE_NULL);
+        // margo_set_log_level(*mid, MARGO_LOG_TRACE);
     }
 
 
@@ -324,7 +339,6 @@ public:
             if (handshakeHandler(sockets[i], false) < 0) return -1;
             sock2End.insert({sockets[i], this->endRPC[i]});
         }
-
         return 0;
     }
 
@@ -355,19 +369,23 @@ public:
         int sck = dest2Socket[task->chid];
         endp = sock2End[sck];
 
+        printf("[RPC_OUT: EXT] Sending to %s -- chid: %d -- sender: %d\n",
+                endp->margo_addr.c_str(), task->chid, task->sender);
         forwardRequest(task, rpc_id, endp);
         return this->GO_ON;
     }
 
     void eosnotify(ssize_t id) {
-        message_t E_O_S(0,0);
-        hg_id_t rpc_id;
-        ff_endpoint_rpc* endp;
-        if (++neos >= this->get_num_inchannels()){
+        printf("[EOS] received an EOS\n");
+        if (++neos >= this->get_num_inchannels()) {
+            message_t E_O_S(0,0);
+            hg_id_t rpc_id = ff_eshutdown_id;
+            ff_endpoint_rpc* endp;
             for(const auto& sck : sockets) {
-                rpc_id = ff_eshutdown_id;
                 endp = sock2End[sck];
-                forwardRequest(&E_O_S, rpc_id, endp);
+                printf("[RPC_OUT: EXT] sending EOS to %s\n",
+                    endp->margo_addr.c_str());
+                forwardEOS(&E_O_S, rpc_id, endp);
             }
         }
     }
@@ -498,6 +516,8 @@ public:
             int sck = internalDest2Socket[task->chid];
             endp = sock2End[sck];
 
+            printf("[RPC_OUT: INT] Sending to %s -- chid: %d -- sender: %d\n",
+                endp->margo_addr.c_str(), task->chid, task->sender);
             forwardRequest(task, rpc_id, endp);
             return this->GO_ON;
         }
@@ -515,6 +535,7 @@ public:
     }
 
     void eosnotify(ssize_t id) {
+        printf("[EOS] received an EOS\n");
         if (id == (ssize_t)(this->get_num_inchannels() - 1)){
             message_t E_O_S(0,0);
             hg_id_t rpc_id;
@@ -524,7 +545,9 @@ public:
             for(const auto& sck : internalSockets) {
                 rpc_id = ff_ishutdown_id;
                 endp = sock2End[sck];
-                forwardRequest(&E_O_S, rpc_id, endp);
+                printf("[RPC_OUT: INT] sending EOS to %s\n",
+                    endp->margo_addr.c_str());
+                forwardEOS(&E_O_S, rpc_id, endp);
             }           
         }
         ff_dsenderRPC::eosnotify(id);
