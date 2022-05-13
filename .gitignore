@@ -1,0 +1,10 @@
+*.out
+*.o
+*.json
+*.xml
+*.txt
+*.junk
+*.state
+*.vscode
+*CMakeFiles
+Examples/*
