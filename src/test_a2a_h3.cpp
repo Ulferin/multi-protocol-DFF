@@ -69,7 +69,7 @@ struct myTask_t {
 
 struct Source : ff_monode_t<myTask_t>{
     myTask_t* svc(myTask_t*){
-        for(int i = 0; i < 1000; i++) {
+        for(int i = 0; i < 10000; i++) {
 			myTask_t* task = new myTask_t;
 			task->str="Hello";
 			task->S.t = i;
@@ -117,11 +117,18 @@ struct Rnode : ff_minode_t<myTask_t>{
 };
 
 struct Sink : ff_minode_t<myTask_t>{
+    int count = 0;
+
     myTask_t* svc(myTask_t* in){
         const std::lock_guard<std::mutex> lock(mtx);
 		std::cout << in->str << std::endl;
 		delete in;
+        count++;
         return this->GO_ON;
+    }
+
+    void svc_end() {
+        printf("I've received: %d tasks\n", count);
     }
 	
 };
@@ -155,7 +162,7 @@ int main(int argc, char*argv[]){
     ff_endpoint g2("127.0.0.1", 36537);
     g2.groupName = "G2";
 
-    ff_endpoint g3("127.0.0.1", 37537);
+    ff_endpoint g3("38.242.220.197", 37000);
     g3.groupName = "G3";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
@@ -171,8 +178,8 @@ int main(int argc, char*argv[]){
     ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 58537, "ofi+sockets");
     ff_endpoint_rpc G1toG2_rpc("127.0.0.1", 59537, "ofi+sockets");
 
-    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 60537, "ofi+sockets");
-    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 61537, "ofi+sockets");
+    ff_endpoint_rpc G1toG3_rpc("38.242.220.197", 35000, "ofi+sockets");
+    ff_endpoint_rpc G2toG3_rpc("38.242.220.197", 36000, "ofi+sockets");
     /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;
@@ -181,7 +188,7 @@ int main(int argc, char*argv[]){
     if (atoi(argv[1]) == 0){
         // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));
         gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
-        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0"));
+        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
 
         gFarm.run_and_wait_end();
         ABT_finalize();
@@ -189,8 +196,8 @@ int main(int argc, char*argv[]){
     } else if (atoi(argv[1]) == 1){
         // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}, {0,1}, {"G2"}));
         // gFarm.add_collector(new ff_dsenderH({g2,g3}, "G1", {"G2"}));
-        gFarm.add_emitter(new ff_dreceiverRPCH(g1, {&G0toG1_rpc, &G2toG1_rpc}, 2, {{0, 0}}, {0,1}, {"G2"}));
-        gFarm.add_collector(new ff_dsenderRPCH({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}));
+        gFarm.add_emitter(new ff_dreceiverRPCH(g1, {&G0toG1_rpc, &G2toG1_rpc}, 2, {{0, 0}}, {0,1}, {"G2"}, -1, 1));
+        gFarm.add_collector(new ff_dsenderRPCH({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, -1, 1));
 
 		auto s = new Lnode(4,0);
 		
@@ -209,8 +216,8 @@ int main(int argc, char*argv[]){
     } else if (atoi(argv[1]) == 2) {
         // gFarm.add_emitter(new ff_dreceiverH(g2, 2, {{1, 0}}, {2,3}, {"G1"}));
         // gFarm.add_collector(new ff_dsenderH({g1, g3}, "G2", {"G1"}));
-        gFarm.add_emitter(new ff_dreceiverRPCH(g2, {&G0toG2_rpc, &G1toG2_rpc}, 2, {{1, 0}}, {2,3}, {"G1"}));
-        gFarm.add_collector(new ff_dsenderRPCH({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}));
+        gFarm.add_emitter(new ff_dreceiverRPCH(g2, {&G0toG2_rpc, &G1toG2_rpc}, 2, {{1, 0}}, {2,3}, {"G1"}, -1, 1));
+        gFarm.add_collector(new ff_dsenderRPCH({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}, -1, 1));
 
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
@@ -232,7 +239,7 @@ int main(int argc, char*argv[]){
         
     } else {
         // gFarm.add_emitter(new ff_dreceiver(g3, 2));
-        gFarm.add_emitter(new ff_dreceiverRPC(g3, {&G1toG3_rpc, &G2toG3_rpc}, 2));
+        gFarm.add_emitter(new ff_dreceiverRPC(g3, {&G1toG3_rpc, &G2toG3_rpc}, 2, {std::make_pair(0, 0)}, -1, 1));
 		gFarm.add_workers({new WrapperIN(new Sink(), 1, true)});
 		
 		gFarm.run_and_wait_end();

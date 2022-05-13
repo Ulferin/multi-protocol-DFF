@@ -354,7 +354,6 @@ public:
         finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
 
-        printf("I've sent %d\n", this->rpc_sent);
     }
 
     message_t *svc(message_t* task) {
@@ -369,22 +368,17 @@ public:
         int sck = dest2Socket[task->chid];
         endp = sock2End[sck];
 
-        printf("[RPC_OUT: EXT] Sending to %s -- chid: %d -- sender: %d\n",
-                endp->margo_addr.c_str(), task->chid, task->sender);
         forwardRequest(task, rpc_id, endp);
         return this->GO_ON;
     }
 
     void eosnotify(ssize_t id) {
-        printf("[EOS] received an EOS\n");
         if (++neos >= this->get_num_inchannels()) {
             message_t E_O_S(0,0);
             hg_id_t rpc_id = ff_eshutdown_id;
             ff_endpoint_rpc* endp;
             for(const auto& sck : sockets) {
                 endp = sock2End[sck];
-                printf("[RPC_OUT: EXT] sending EOS to %s\n",
-                    endp->margo_addr.c_str());
                 forwardEOS(&E_O_S, rpc_id, endp);
             }
         }
@@ -491,7 +485,6 @@ public:
             //      the saved handle can then be used in the communications
             //      involving this "socket" descriptor
             handshakeHandler(sck, isInternal);
-            printf("Binding socket(%d) to endpoint (%s)\n", sck, endRPC[i]->margo_addr.c_str());
             sock2End.insert({sck, endRPC[i]});
         }
 
@@ -516,8 +509,6 @@ public:
             int sck = internalDest2Socket[task->chid];
             endp = sock2End[sck];
 
-            printf("[RPC_OUT: INT] Sending to %s -- chid: %d -- sender: %d\n",
-                endp->margo_addr.c_str(), task->chid, task->sender);
             forwardRequest(task, rpc_id, endp);
             return this->GO_ON;
         }
@@ -535,7 +526,6 @@ public:
     }
 
     void eosnotify(ssize_t id) {
-        printf("[EOS] received an EOS\n");
         if (id == (ssize_t)(this->get_num_inchannels() - 1)){
             message_t E_O_S(0,0);
             hg_id_t rpc_id;
@@ -545,8 +535,6 @@ public:
             for(const auto& sck : internalSockets) {
                 rpc_id = ff_ishutdown_id;
                 endp = sock2End[sck];
-                printf("[RPC_OUT: INT] sending EOS to %s\n",
-                    endp->margo_addr.c_str());
                 forwardEOS(&E_O_S, rpc_id, endp);
             }           
         }
