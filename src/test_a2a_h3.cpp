@@ -69,13 +69,15 @@ struct myTask_t {
 
 struct Source : ff_monode_t<myTask_t>{
     myTask_t* svc(myTask_t*){
-        for(int i = 0; i < 10000; i++) {
+        int n = 10000;
+        for(int i = 0; i < n; i++) {
 			myTask_t* task = new myTask_t;
 			task->str="Hello";
 			task->S.t = i;
 			task->S.f = i*1.0;
 			ff_send_out(task);
 		}
+        printf("Generated %d tasks\n", n);
 		return EOS;
     }
 };
@@ -152,7 +154,7 @@ int main(int argc, char*argv[]){
         return 1;
     }
     margo_set_environment(NULL);
-    // margo_set_global_log_level(MARGO_LOG_TRACE);
+    margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
     /* --- TCP HANDSHAKE ENDPOINTS --- */
@@ -162,7 +164,7 @@ int main(int argc, char*argv[]){
     ff_endpoint g2("127.0.0.1", 36537);
     g2.groupName = "G2";
 
-    ff_endpoint g3("38.242.220.197", 37000);
+    ff_endpoint g3("127.0.0.1", 37000);
     g3.groupName = "G3";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
@@ -178,8 +180,8 @@ int main(int argc, char*argv[]){
     ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 58537, "ofi+sockets");
     ff_endpoint_rpc G1toG2_rpc("127.0.0.1", 59537, "ofi+sockets");
 
-    ff_endpoint_rpc G1toG3_rpc("38.242.220.197", 35000, "ofi+sockets");
-    ff_endpoint_rpc G2toG3_rpc("38.242.220.197", 36000, "ofi+sockets");
+    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 35000, "ofi+sockets");
+    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 36000, "ofi+sockets");
     /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;

@@ -29,6 +29,7 @@
 
 #include <iostream>
 #include <vector>
+#include <thread>
 
 #include <ff/ff.hpp>
 #include <margo.h>
@@ -54,8 +55,7 @@ private:
 
 
     void register_rpcs(margo_instance_id* mid) {
-        hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc);
-        margo_registered_disable_response(*mid, id, HG_TRUE);
+        hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, ff_rpc_out_t, ff_rpc);
         margo_register_data(*mid, id, this, NULL);
 
         id = MARGO_REGISTER(*mid, "ff_rpc_shutdown", void, void, ff_rpc_shutdown);
@@ -64,7 +64,7 @@ private:
 
 
     void init_mid(char* address, margo_instance_id* mid) {
-        na_init_info na_info;
+        na_init_info na_info = NA_INIT_INFO_INITIALIZER;
         na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
         
         hg_init_info info = {
@@ -81,9 +81,6 @@ private:
         };
 
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
-        // FIXME: error handling code here
-
-        // margo_set_log_level(*mid, MARGO_LOG_TRACE);
     }
 
 
@@ -93,13 +90,6 @@ public:
 
         mids = new std::vector<margo_instance_id*>();
 
-        // NOTE: amount of pools and ES can be tweaked however we want here, as
-        //       as long as we keep the waiting calls in different ULTs, since
-        //       they are blocking calls and would block the whole main ULT in
-        //       case we do not separate them.
-
-        // TODO: pools and xstreams can be placed in a vector
-        
         // Set up pool and xstreams to manage RPC requests
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
                 ABT_FALSE, &pool_e1);
@@ -135,36 +125,37 @@ public:
             threads.push_back(aux);
         }
 
-        // TODO: this should be a single call to finalize each ES and free
-        //       every pool. Most likely to become a for loop over a vector
         finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
         return EOS;
     }
 
-    // TODO: add cleanup code in destructor
 
 };
 
 
-// TODO: define this as a templated class
 class senderStage: public ff_minode_t<float> {
 
 private:
-    char*                   addr;
-    margo_instance_id       mid;
-    hg_addr_t               svr_addr;
-    hg_id_t                 ff_rpc_id, ff_shutdown_id;
-    ABT_pool                pool_e1;
-    ABT_xstream             xstream_e1;
-    int                    busy;
+    char*                       addr;
+    margo_instance_id           mid;
+    hg_id_t                     ff_rpc_id, ff_shutdown_id;
+    ABT_pool                    pool_e1;
+    ABT_xstream                 xstream_e1;
+    int                         busy;
+    hg_addr_t                   svr_addr;
+    size_t                      otm;
+
+    std::vector<margo_request> reqs;
+    std::vector<hg_handle_t>   handles;
+    size_t                      count = 0;
+    size_t                      last_av = -1;
+    size_t                      curr_it = 0;
 
 
     void register_rpcs() {
-        ff_rpc_id = MARGO_REGISTER(mid, "ff_rpc", ff_rpc_in_t, void, NULL);
-        margo_registered_disable_response(mid, ff_rpc_id, HG_TRUE);
+        ff_rpc_id = MARGO_REGISTER(mid, "ff_rpc", ff_rpc_in_t, ff_rpc_out_t, NULL);
         margo_addr_lookup(mid, addr, &svr_addr);
-        // TODO: add error handling
 
         ff_shutdown_id = MARGO_REGISTER(mid, "ff_rpc_shutdown",
                 void, void, NULL);
@@ -184,7 +175,7 @@ private:
         colon = strchr(proto, ':');
         if (colon) *colon = '\0';
 
-        na_init_info na_info;
+        na_init_info na_info = NA_INIT_INFO_INITIALIZER;
         na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
         hg_init_info info = {
             .na_init_info = na_info
@@ -199,24 +190,17 @@ private:
             .hg_init_info  = &info       /* struct hg_init_info* */
         };
 
-        // NOTE: we are listening on a "client" node. Necessary in order to
-        //       avoid UCX error on printing address
-        mid = margo_init_ext(proto, MARGO_SERVER_MODE, &args);
+        mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
         if (mid == MARGO_INSTANCE_NULL) {
             fprintf(stderr, "Error: margo_init_ext()\n");
-            // FIXME: We must have a way to manage wrong allocation of mid class
-            // return -1;
         }
-        // margo_set_log_level(mid, MARGO_LOG_TRACE);
         free(proto);
 
     }
 
 public:
-    // FIXME: modify this in order to use move semantic to transfer ownerhsip of
-    //       address string.
-    senderStage(char* addr, int busy=0) : addr{addr},
-                        busy{busy}, svr_addr{HG_ADDR_NULL} {
+    senderStage(char* addr, int busy=0, size_t otm = 10) : addr{addr},
+                        busy{busy}, svr_addr{HG_ADDR_NULL}, otm{otm} {
         
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC, ABT_FALSE,
                 &pool_e1);
@@ -226,22 +210,43 @@ public:
         init_mid(addr);
 
         register_rpcs();
+        
     }
 
 
     float* svc(float * task) {
-        auto &t = *task; 
         ff_rpc_in_t in;
+        ff_rpc_out_t out;
         hg_handle_t h;
 
         in.task = new float(*task);
         delete task;
-
         margo_create(mid, svr_addr, ff_rpc_id, &h);
-        margo_forward(h, &in);
-        margo_destroy(h);
-        delete in.task;
- 
+        margo_request req;
+        margo_iforward(h, &in, &req);
+        // margo_free_input(h, &in);
+        reqs.push_back(req);
+        handles.push_back(h);
+        count++;
+
+        if(count > 5) {
+            size_t idx;
+            margo_wait_any(reqs.size(), &reqs[0], &idx);
+            printf("Got idx: %ld\n", idx);
+            
+            margo_get_output(handles[idx], &out);
+            printf("Got: %d\n", *out.resp);
+
+            margo_free_output(handles[idx], &out);
+            margo_destroy(handles[idx]);
+
+            reqs[idx] = MARGO_REQUEST_NULL;
+            handles[idx] = HG_HANDLE_NULL;
+            count--;
+        }
+
+        printf("Updated count: %ld\n", count);
+        // delete in.task;
         return GO_ON;
     }
 
@@ -253,6 +258,22 @@ public:
         margo_create(mid, svr_addr, ff_shutdown_id, &h);
         margo_forward(h, NULL);
         margo_destroy(h);
+
+        size_t i = -1;
+        while(count > 0) {
+            ff_rpc_out_t out;
+            i = (i+1) % reqs.size();
+            if(reqs[i] == MARGO_REQUEST_NULL) continue;
+            margo_wait(reqs[i]);
+            
+            margo_get_output(handles[i], &out);
+            printf("Got: %d\n", *out.resp);
+            margo_free_output(handles[i], &out);
+            reqs[i] = MARGO_REQUEST_NULL;
+            margo_destroy(handles[i]);
+            handles[i] = HG_HANDLE_NULL;
+            count--;
+        }
         
         margo_finalize(mid);
         finalize_xstream_cb(xstream_e1);
@@ -262,13 +283,11 @@ public:
 
 
 /* ----- MARGO RPCs definition ----- */
-// NOTE: these are only needed by the receiverStage class, since senderStage
-//      doesn't need to specify a RPC definition.
-
 void ff_rpc(hg_handle_t handle)
 {
     hg_return_t           hret;
     ff_rpc_in_t           in;
+    ff_rpc_out_t            out;
     const struct hg_info* info;
     margo_instance_id mid;
 
@@ -288,9 +307,13 @@ void ff_rpc(hg_handle_t handle)
             (receiverStage*)margo_registered_data(mid, info->id);
     receiver->ff_send_out(new float(*in.task));
 
-    margo_free_input(handle, &in);
-    margo_destroy(handle);
+    out.resp = new int(42);
+    margo_respond(handle, &out);
 
+    margo_free_input(handle, &in);
+    // margo_free_output(handle, &out);
+    margo_destroy(handle);
+    // std::this_thread::sleep_for(std::chrono::seconds(1));
     return;
 }
 DEFINE_MARGO_RPC_HANDLER(ff_rpc)
@@ -298,7 +321,6 @@ DEFINE_MARGO_RPC_HANDLER(ff_rpc)
 
 void ff_rpc_shutdown(hg_handle_t handle)
 {
-    hg_return_t       hret;
     margo_instance_id mid;
 
     printf("Got RPC request to shutdown\n");
