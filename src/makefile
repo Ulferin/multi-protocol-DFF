@@ -11,7 +11,7 @@ DEBUG =
 
 TARGETS = ff_g1.out ff_g2.out ff_g3.out
 DEPS = my-rpc.h ff_comm.hpp utils.hpp
-FF_DEPS = ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp $(FF_ROOT)ff/distributed/ff_drpc_types.h $(FF_ROOT)ff/distributed/ff_dutils.hpp
+FF_DEPS = ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp $(FF_ROOT)ff/distributed/ff_drpc_types.h $(FF_ROOT)ff/distributed/ff_dutils.hpp $(FF_ROOT)ff/distributed/ff_network.hpp
 
 .PHONY = all clean cleanall
 

@@ -1,9 +1,10 @@
 /**
  * @file ff_comm.hpp
  * @author Federico Finocchio
- * @brief Implementation of two basics remotely connected ff_node_t classes.
+ * @brief Implementation of two basics remotely connected ff_node_t classes,
+ * mostly needed to test new functionalities. Not for production builds.
  * The nodes are purposefully implemented to be plugged in existing FastFlow
- * building blocks and communicate between each other's, since they will happen
+ * building blocks and communicate between each other, since they will happen
  * to be paired at the extremes of two distributed groups. Thus, both nodes
  * share the same set of RPC functions which allows to forward/receive an
  * element of a stream through the network.
