@@ -70,13 +70,15 @@ struct myTask_t {
 
 struct Source : ff_monode_t<myTask_t>{
     myTask_t* svc(myTask_t*){
-        for(int i = 0; i < 10000; i++) {
+        int n = 10000;
+        for(int i = 0; i < n; i++) {
 			myTask_t* task = new myTask_t;
 			task->str="Hello";
 			task->S.t = i;
 			task->S.f = i*1.0;
 			ff_send_out(task);
 		}
+        printf("Generated %d tasks\n", n);
 		return EOS;
     }
 };
@@ -178,11 +180,11 @@ int main(int argc, char*argv[]){
     //      plugin+protocol pairs that accept a "port" field. This is not the
     //      case, for example, for na+sm, which has problems in managing the
     //      "protocol" field.
-    ff_endpoint_rpc G0toG1_rpc("127.0.0.1", 56537, "ofi+sockets");
-    ff_endpoint_rpc G2toG1_rpc("", -1, "mpi+static");
+    ff_endpoint_rpc G0toG1_rpc(";rank$1#", -1, "mpi+static");
+    ff_endpoint_rpc G2toG1_rpc("127.0.0.1", 56537, "ofi+sockets");
 
     ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 58537, "ofi+sockets");
-    ff_endpoint_rpc G1toG2_rpc("", -1, "mpi+static");
+    ff_endpoint_rpc G1toG2_rpc("127.0.0.1", 59537, "ofi+sockets");
 
     ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 35000, "ofi+sockets");
     ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 36000, "ofi+sockets");
@@ -196,10 +198,29 @@ int main(int argc, char*argv[]){
     if(rank == 0) {
         // We pass -1 to the real MPI program since we don't need distinction,
         // this is made via rank in case of MPI executable
-        if(atoi(argv[1]) == 0) {
-            gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
-            gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
+        if(atoi(argv[1]) == 2) {
+            gFarm.add_collector(new ff_dsenderRPCH({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}, -1, 1));
+            gFarm.add_emitter(new ff_dreceiverRPCH(g2, {&G0toG2_rpc, &G1toG2_rpc}, 2, {{1, 0}}, {2,3}, {"G1"}, -1, 1));
 
+            gFarm.cleanup_emitter();
+            gFarm.cleanup_collector();
+
+            auto s = new Lnode(4,1);                                                                           
+            auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF)), new EmitterAdapter(s, 4, 1, {{2,0}, {3,1}}, true), true, true);
+
+            a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(2,0), std::make_pair(3,1)})}, 0, true);
+
+            auto rnode2 = new Rnode(2);
+            auto rnode3 = new Rnode(3);
+            a2a.add_secondset<ff_node>({
+                                        new ff_comb(new CollectorAdapter(rnode2, {1}, true),
+                                                    new WrapperOUT(new ForwarderNode(rnode2->serializeF), 2, 1, true), true, true),
+                                        new ff_comb(new CollectorAdapter(rnode3, {1}, true),
+                                                    new WrapperOUT(new ForwarderNode(rnode3->serializeF), 3, 1, true), true, true),
+                                        new SquareBoxRight   // this box should be the last one!
+                                        }, true);		
+            
+            gFarm.add_workers({&a2a});
         }
         else if(atoi(argv[1]) == 3) {
             gFarm.add_emitter(new ff_dreceiverRPC(g3, {&G1toG3_rpc, &G2toG3_rpc}, 2, {std::make_pair(0, 0)}, -1, 1));
@@ -207,18 +228,15 @@ int main(int argc, char*argv[]){
             
         }
         else {
-            printf("step: 0\n");
             gFarm.add_emitter(new ff_dreceiverRPCH(g1, {&G0toG1_rpc, &G2toG1_rpc}, 2, {{0, 0}}, {0,1}, {"G2"}, -1, 1));
-            printf("step: 0.1\n");
+            MPI_Barrier(gcomm);
             gFarm.add_collector(new ff_dsenderRPCH({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, -1, 1));
-            printf("step: 1\n");
 
             auto s = new Lnode(4,0);
             
             auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF)), new EmitterAdapter(s, 4, 0, {{0,0}, {1,1}}, true), true, true);
 
             a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({{0,0}, {1,1}})});
-            printf("step: 2\n");
             auto rnode0 = new Rnode(0);
             auto rnode1 = new Rnode(1);
             a2a.add_secondset<ff_node>({
@@ -227,37 +245,13 @@ int main(int argc, char*argv[]){
                                         new ff_comb(new CollectorAdapter(rnode1, {0}, true),
                                                     new WrapperOUT(new ForwarderNode(rnode1->serializeF), 1, 1, true)),
                                         new SquareBoxRight});  // this box should be the last one!
-            printf("step: 3\n");
             gFarm.add_workers({&a2a});
-            printf("step: 4\n");
-            MPI_Barrier(gcomm);
-            printf("step: 5\n");
         }
 
     }
-    else if (rank==1) {
-        gFarm.add_emitter(new ff_dreceiverRPCH(g2, {&G0toG2_rpc, &G1toG2_rpc}, 2, {{1, 0}}, {2,3}, {"G1"}, -1, 1));
-        gFarm.add_collector(new ff_dsenderRPCH({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}, -1, 1));
-
-		gFarm.cleanup_emitter();
-		gFarm.cleanup_collector();
-
-		auto s = new Lnode(4,1);                                                                           
-		auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF)), new EmitterAdapter(s, 4, 1, {{2,0}, {3,1}}, true), true, true);
-
-        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(2,0), std::make_pair(3,1)})}, 0, true);
-
-        auto rnode2 = new Rnode(2);
-		auto rnode3 = new Rnode(3);
-		a2a.add_secondset<ff_node>({
-									new ff_comb(new CollectorAdapter(rnode2, {1}, true),
-												new WrapperOUT(new ForwarderNode(rnode2->serializeF), 2, 1, true), true, true),
-									new ff_comb(new CollectorAdapter(rnode3, {1}, true),
-												new WrapperOUT(new ForwarderNode(rnode3->serializeF), 3, 1, true), true, true),
-									new SquareBoxRight   // this box should be the last one!
-			                        }, true);		
-        
-        gFarm.add_workers({&a2a});
+    else {
+        gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
+        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
         MPI_Barrier(gcomm);
     } 
     gFarm.run_and_wait_end();
