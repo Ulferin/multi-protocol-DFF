@@ -39,7 +39,6 @@
 
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
-#include <ff/distributed/ff_drpc_types.h>
 #include <ff/distributed/ff_dgroups.hpp>
 #include <ff/distributed/ff_dutils.hpp>
 #include <cereal/cereal.hpp>
@@ -50,7 +49,8 @@
 #include <margo.h>
 #include <abt.h>
 
-// #include "my-rpc.h"
+#include "ff_drpc_types.h"
+#include "ff_margo_utils.hpp"
 
 using namespace ff;
 
@@ -388,9 +388,6 @@ protected:
     }
 
     void registerEOS(bool internal) {
-        // NOTE: the internalConn variable can be saved once and for all at the end
-        //      of the handshake process. This will not change once we have received
-        //      all connection requests
         if(!internal) {
             if (++externalNEos == (input_channels-internalConnections))
                 for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
@@ -457,7 +454,7 @@ public:
         }
     }
 
-    message_t* svc(message_t* task) {
+    message_t *svc(message_t* task) {        
         fd_set set, tmpset;
         // intialize both sets (master, temp)
         FD_ZERO(&set);
@@ -469,7 +466,6 @@ public:
         // hold the greater descriptor
         int fdmax = this->listen_sck; 
 
-        // We only need to receive routing tables once per input channel
         while(handshakes < input_channels){
             // copy the master set to the temporary
             tmpset = set;
@@ -500,7 +496,6 @@ public:
                 }
             }
         }
-
         std::vector<ABT_thread*> threads;
 
         for (auto &&mid : mids)
@@ -513,7 +508,6 @@ public:
         finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
         return this->EOS;
-        
     }
 
     // Necessary to access internal fields in the RPC callbacks

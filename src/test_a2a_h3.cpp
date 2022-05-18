@@ -42,7 +42,6 @@
 #include <mutex>
 #include <map>
 
-#include <ff/distributed/ff_drpc_types.h>
 #include "ff_dsender_rpc.hpp"
 #include "ff_dreceiver_rpc.hpp"
 
@@ -154,7 +153,7 @@ int main(int argc, char*argv[]){
         return 1;
     }
     margo_set_environment(NULL);
-    margo_set_global_log_level(MARGO_LOG_TRACE);
+    // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
     /* --- TCP HANDSHAKE ENDPOINTS --- */
@@ -164,7 +163,7 @@ int main(int argc, char*argv[]){
     ff_endpoint g2("127.0.0.1", 36537);
     g2.groupName = "G2";
 
-    ff_endpoint g3("127.0.0.1", 37000);
+    ff_endpoint g3("127.0.0.1", 37537);
     g3.groupName = "G3";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
@@ -180,8 +179,8 @@ int main(int argc, char*argv[]){
     ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 58537, "ofi+sockets");
     ff_endpoint_rpc G1toG2_rpc("127.0.0.1", 59537, "ofi+sockets");
 
-    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 35000, "ofi+sockets");
-    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 36000, "ofi+sockets");
+    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 60537, "ofi+sockets");
+    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 61537, "ofi+sockets");
     /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;

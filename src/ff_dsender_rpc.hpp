@@ -45,6 +45,8 @@
 #include <margo.h>
 #include <abt.h>
 
+#include "ff_drpc_types.h"
+#include "ff_margo_utils.hpp"
 //TODO: check for delete calls missing in svc method or some protocol retrieval
 //      via strdup
 

@@ -9,8 +9,9 @@ LDFLAGS = -L/usr/local/lib -Wl,-rpath,/usr/local/lib/ -I${FF_ROOT} -I$(CEREAL_RO
 LDLIBS = -pthread -lrt -lmargo -labt -lmercury
 DEBUG = 
 
-TARGETS = ff_g1.out ff_g2.out ff_g3.out
+TARGETS = ff_g1.out ff_g2.out ff_g3.out margo_ff_test.out
 DEPS = my-rpc.h ff_comm.hpp utils.hpp
+FF_DEPS = ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp ff_drpc_types.h ff_margo_utils.hpp
 
 .PHONY = all clean cleanall
 
@@ -25,7 +26,7 @@ ff_g2.out: ff_g2.cpp $(DEPS)
 ff_g3.out: ff_g3.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
 
-margo_ff_test.out: test_a2a_h3.cpp ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp $(FF_ROOT)ff/distributed/ff_drpc_types.h $(FF_ROOT)ff/distributed/ff_dutils.hpp
+margo_ff_test.out: test_a2a_h3.cpp $(FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)
 
 clean:
