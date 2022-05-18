@@ -153,7 +153,7 @@ protected:
         ff_send_out_to(task, this->routingTable[task->chid]); // assume the routing table is consistent WARNING!!!
     }
 
-    void registerEOS(bool) {
+    virtual void registerEOS(bool) {
         if(++neos == input_channels)
             for (auto &&mid : mids)
             {
@@ -387,7 +387,7 @@ protected:
         margo_register_data(*mid, id, this, NULL);
     }
 
-    void registerEOS(bool internal) {
+    virtual void registerEOS(bool internal) {
         if(!internal) {
             if (++externalNEos == (input_channels-internalConnections))
                 for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
@@ -589,14 +589,7 @@ void ff_rpc_shutdown(hg_handle_t handle) {
     ff_dreceiverRPC* receiver =
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
     
-    //NOTE: probably not the best-looking solution to handle this. Check about
-    //      virtual functions and how they can be used to handle polymorphism
-    ff_dreceiverRPCH* receiverH = dynamic_cast<ff_dreceiverRPCH*>(receiver);
-
-    if(receiverH)
-        receiverH->registerEOS(false);
-    else
-        receiver->registerEOS(false);
+    receiver->registerEOS(false);
 
     margo_destroy(handle);
 
