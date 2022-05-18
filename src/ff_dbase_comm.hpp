@@ -1,35 +1,5 @@
-/**
- * @file ff_comm.hpp
- * @author Federico Finocchio
- * @brief Implementation of two basics remotely connected ff_node_t classes.
- * The nodes are purposefully implemented to be plugged in existing FastFlow
- * building blocks and communicate between each other's, since they will happen
- * to be paired at the extremes of two distributed groups. Thus, both nodes
- * share the same set of RPC functions which allows to forward/receive an
- * element of a stream through the network.
- * 
- * 
- * Two types of remotely connected nodes are provided:
- *   - receiverStage: a listening node for remote RPC functions. It can listen
- *          on multiple endpoints and forwards every input element
- *          received to the next FastFlow node. Generates an EOS upon shutdown.
- *   - senderStage: a remote forwarder node which ships stream elements through
- *          the registered RPC functions. Issue a shutdown request upon EOS.
- * 
- * Both nodes register two RPCs, ff_rpc used to pass stream elements between
- * remote ends, ff_rpc_shutdown used to signal to the remotely connected group
- * that an EOS has been received.
- * 
- * 
- * @version 0.1
- * @date 2022-03-21
- * 
- * 
- */
-
-#include <iostream>
-#include <sstream>
-#include <vector>
+#ifndef FF_BASE_COMM
+#define FF_BASE_COMM
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -37,26 +7,230 @@
 #include <sys/uio.h>
 #include <arpa/inet.h>
 
+#include <iostream>
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
 #include <ff/distributed/ff_dgroups.hpp>
 #include <ff/distributed/ff_dutils.hpp>
+
 #include <cereal/cereal.hpp>
 #include <cereal/archives/portable_binary.hpp>
 #include <cereal/types/vector.hpp>
 #include <cereal/types/polymorphic.hpp>
 
-#include <margo.h>
 #include <abt.h>
+#include <margo.h>
 
 #include "ff_drpc_types.h"
 #include "ff_margo_utils.hpp"
 
 using namespace ff;
 
-class ff_dreceiverRPC: public ff_monode_t<message_t> {
-protected:
+class ff_dAreceiverBase: public ff_monode_t<message_t> {
 
+protected:
+    static int sendRoutingTable(const int sck, const std::vector<int>& dest){
+        dataBuffer buff; std::ostream oss(&buff);
+		cereal::PortableBinaryOutputArchive oarchive(oss);
+		oarchive << dest;
+
+        size_t sz = htobe64(buff.getLen());
+        struct iovec iov[2];
+        iov[0].iov_base = &sz;
+        iov[0].iov_len = sizeof(sz);
+        iov[1].iov_base = buff.getPtr();
+        iov[1].iov_len = buff.getLen();
+
+        if (writevn(sck, iov, 2) < 0){
+            error("Error writing on socket the routing Table\n");
+            return -1;
+        }
+
+        return 0;
+    }
+
+
+    virtual int handshakeHandler(const int sck){
+        // ricevo l'handshake e mi salvo che tipo di connessione è
+        size_t size;
+        struct iovec iov; iov.iov_base = &size; iov.iov_len = sizeof(size);
+        switch (readvn(sck, &iov, 1)) {
+           case -1: error("Error reading from socket\n"); // fatal error
+           case  0: return -1; // connection close
+        }
+
+        size = be64toh(size);
+
+        char groupName[size];
+        if (readn(sck, groupName, size) < 0){
+            error("Error reading from socket groupName\n"); return -1;
+        }
+        std::vector<int> reachableDestinations;
+        for(const auto& [key, value] : this->routingTable) reachableDestinations.push_back(key);
+
+        return this->sendRoutingTable(sck, reachableDestinations);
+    }
+
+    virtual void forward(message_t* task, int){
+        ff_send_out_to(task, this->routingTable[task->chid]); // assume the routing table is consistent WARNING!!!
+    }
+
+    virtual void registerEOS(bool) {
+        neos++;        
+    }
+
+public:
+
+    ff_dAreceiverBase(ff_endpoint handshakeAddr, size_t input_channels,
+        std::map<int,int> routingTable, int coreid = -1):
+            handshakeAddr(handshakeAddr), input_channels(input_channels),
+            routingTable(routingTable), coreid(coreid) {}
+
+    virtual message_t* svc(message_t* task) = 0;
+
+    void svc_end() {
+        close(this->listen_sck);
+
+        #ifdef LOCAL
+            unlink(this->acceptAddr.address.c_str());
+        #endif
+    }
+
+    int svc_init() {
+  		if (coreid!=-1)
+			ff_mapThreadToCpu(coreid);
+
+        #ifdef LOCAL
+            if ((listen_sck=socket(AF_LOCAL, SOCK_STREAM, 0)) < 0){
+                error("Error creating the socket\n");
+                return -1;
+            }
+            
+            struct sockaddr_un serv_addr;
+            memset(&serv_addr, '0', sizeof(serv_addr));
+            serv_addr.sun_family = AF_LOCAL;
+            strncpy(serv_addr.sun_path, acceptAddr.address.c_str(), acceptAddr.address.size()+1);
+        #endif
+
+        #ifdef REMOTE
+            if ((listen_sck=socket(AF_INET, SOCK_STREAM, 0)) < 0){
+                error("Error creating the socket\n");
+                return -1;
+            }
+
+            int enable = 1;
+            // enable the reuse of the address
+            if (setsockopt(listen_sck, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+                error("setsockopt(SO_REUSEADDR) failed\n");
+
+            struct sockaddr_in serv_addr;
+            serv_addr.sin_family = AF_INET; 
+            serv_addr.sin_addr.s_addr = INADDR_ANY; // still listening from any interface
+            serv_addr.sin_port = htons( handshakeAddr.port );
+
+        #endif
+
+        int bind_err;
+        if ((bind_err = bind(listen_sck, (struct sockaddr*)&serv_addr,sizeof(serv_addr))) < 0){
+            error("Error binding: %d -- %s\n", bind_err, strerror(errno));
+            return -1;
+        }
+
+        if (listen(listen_sck, MAXBACKLOG) < 0){
+            error("Error listening\n");
+            return -1;
+        }
+        return 0;
+    }
+
+
+protected:
+    ff_endpoint         handshakeAddr;
+    size_t              input_channels;
+    std::map<int, int>  routingTable;
+    int                 coreid;
+
+    size_t              neos = 0;
+    int                 listen_sck;
+    int                 last_receive_fd;
+
+
+};
+
+
+class ff_dAreceiverH : virtual public ff_dAreceiverBase {
+
+protected:
+    virtual int handshakeHandler(const int sck){
+        size_t size;
+        struct iovec iov; iov.iov_base = &size; iov.iov_len = sizeof(size);
+        switch (readvn(sck, &iov, 1)) {
+           case -1: error("Error reading from socket\n"); // fatal error
+           case  0: return -1; // connection close
+        }
+
+        size = be64toh(size);
+
+        char groupName[size];
+        if (readn(sck, groupName, size) < 0){
+            error("Error reading from socket groupName\n"); return -1;
+        }
+        
+        bool internalGroup = internalGroupsNames.contains(std::string(groupName,size));
+        isInternalConnection[sck] = internalGroup; // save somewhere the fact that this sck represent an internal connection
+
+        if (internalGroup) return this->sendRoutingTable(sck, internalDestinations);
+
+
+        std::vector<int> reachableDestinations;
+        for(const auto& [key, value] :  this->routingTable) reachableDestinations.push_back(key);
+        return this->sendRoutingTable(sck, reachableDestinations);
+    }
+
+    void forward(message_t* task, int sck){
+        if (isInternalConnection[sck]) ff_send_out_to(task, this->get_num_outchannels()-1);
+        else ff_dAreceiverBase::forward(task, sck);
+    }
+
+    virtual void registerEOS(bool internal) {
+        if(!internal) {
+            if (++externalNEos == (input_channels-internalConnections))
+                for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
+        } else {
+            if (++internalNEos == internalConnections)
+                ff_send_out_to(this->EOS, get_num_outchannels()-1);
+        }
+
+        ff_dAreceiverBase::registerEOS(internal);
+    }
+
+public:
+
+    ff_dAreceiverH(ff_endpoint handshakeAddr, size_t input_channels,
+        std::map<int, int> routingTable = {{0,0}},
+        std::vector<int> internalDestinations = {0},
+        std::set<std::string> internalGroupsNames = {},
+        int coreid = -1, int busy = 0):
+            ff_dAreceiverBase(handshakeAddr, input_channels, routingTable,
+                coreid),
+            internalDestinations(internalDestinations),
+            internalGroupsNames(internalGroupsNames) {
+    
+        internalConnections = this->internalGroupsNames.size();
+    }
+
+protected:
+    std::vector<int>        internalDestinations;
+    std::map<int, bool>     isInternalConnection;
+    std::set<std::string>   internalGroupsNames;
+    size_t                  internalNEos = 0, externalNEos = 0;
+    size_t                  internalConnections = 0;
+};
+
+
+class ff_dreceiverBaseRPC: virtual public ff_dAreceiverBase {
+
+protected:
     void init_ABT() {
         #ifdef INIT_CUSTOM
         margo_set_environment(NULL);
@@ -108,113 +282,21 @@ protected:
         margo_register_data(*mid, id, this, NULL);
     }
 
-    static int sendRoutingTable(const int sck, const std::vector<int>& dest){
-        dataBuffer buff; std::ostream oss(&buff);
-		cereal::PortableBinaryOutputArchive oarchive(oss);
-		oarchive << dest;
-
-        size_t sz = htobe64(buff.getLen());
-        struct iovec iov[2];
-        iov[0].iov_base = &sz;
-        iov[0].iov_len = sizeof(sz);
-        iov[1].iov_base = buff.getPtr();
-        iov[1].iov_len = buff.getLen();
-
-        if (writevn(sck, iov, 2) < 0){
-            error("Error writing on socket the routing Table\n");
-            return -1;
-        }
-
-        return 0;
-    }
-
-    virtual int handshakeHandler(const int sck){
-        // ricevo l'handshake e mi salvo che tipo di connessione è
-        size_t size;
-        struct iovec iov; iov.iov_base = &size; iov.iov_len = sizeof(size);
-        switch (readvn(sck, &iov, 1)) {
-           case -1: error("Error reading from socket\n"); // fatal error
-           case  0: return -1; // connection close
-        }
-
-        size = be64toh(size);
-
-        char groupName[size];
-        if (readn(sck, groupName, size) < 0){
-            error("Error reading from socket groupName\n"); return -1;
-        }
-        std::vector<int> reachableDestinations;
-        for(const auto& [key, value] : this->routingTable) reachableDestinations.push_back(key);
-
-        return this->sendRoutingTable(sck, reachableDestinations);
-    }
-
-    virtual void forward(message_t* task, int){
-        ff_send_out_to(task, this->routingTable[task->chid]); // assume the routing table is consistent WARNING!!!
-    }
-
-    virtual void registerEOS(bool) {
-        if(++neos == input_channels)
-            for (auto &&mid : mids)
-            {
+    virtual void registerEOS(bool internal) {
+        ff_dAreceiverBase::registerEOS(internal);
+        if(neos == input_channels)
+            for (auto &&mid : mids) {
                 margo_finalize(*mid);
-            }        
-    }
-
-    // For TCP-based connections
-    virtual int handleRequest(int sck){
-   		int sender;
-		int chid;
-        size_t sz;
-        struct iovec iov[3];
-        iov[0].iov_base = &sender;
-        iov[0].iov_len = sizeof(sender);
-        iov[1].iov_base = &chid;
-        iov[1].iov_len = sizeof(chid);
-        iov[2].iov_base = &sz;
-        iov[2].iov_len = sizeof(sz);
-
-        switch (readvn(sck, iov, 3)) {
-           case -1: error("Error reading from socket\n"); // fatal error
-           case  0: return -1; // connection close
-        }
-
-        // convert values to host byte order
-        sender = ntohl(sender);
-        chid   = ntohl(chid);
-        sz     = be64toh(sz);
-
-        if (sz > 0){
-            char* buff = new char [sz];
-			assert(buff);
-            if(readn(sck, buff, sz) < 0){
-                error("Error reading from socket\n");
-                delete [] buff;
-                return -1;
             }
-			message_t* out = new message_t(buff, sz, true);
-			assert(out);
-			out->sender = sender;
-			out->chid   = chid;
-
-            this->forward(out, sck);
-            return 0;
-        }
-
-
-        registerEOS(sck);
-
-        return -1;
-    }
+    } 
 
 public:
-    ff_dreceiverRPC(ff_endpoint handshakeAddr,
+    ff_dreceiverBaseRPC(ff_endpoint handshakeAddr,
         std::vector<ff_endpoint_rpc*> endRPC, size_t input_channels,
         std::map<int, int> routingTable = {std::make_pair(0,0)},
         int coreid = -1, int busy = 0):
-            handshakeAddr(handshakeAddr), endRPC(std::move(endRPC)),
-            input_channels(input_channels), routingTable(routingTable),
-            coreid(coreid) {
+            ff_dAreceiverBase(handshakeAddr, input_channels, routingTable), 
+            endRPC(std::move(endRPC)) {
         
         init_ABT();
         for (auto &&addr: this->endRPC)
@@ -226,71 +308,13 @@ public:
         }
     }
 
-    int svc_init() {
-  		if (coreid!=-1)
-			ff_mapThreadToCpu(coreid);
 
-        #ifdef LOCAL
-            if ((listen_sck=socket(AF_LOCAL, SOCK_STREAM, 0)) < 0){
-                error("Error creating the socket\n");
-                return -1;
-            }
-            
-            struct sockaddr_un serv_addr;
-            memset(&serv_addr, '0', sizeof(serv_addr));
-            serv_addr.sun_family = AF_LOCAL;
-            strncpy(serv_addr.sun_path, acceptAddr.address.c_str(), acceptAddr.address.size()+1);
-        #endif
-
-        #ifdef REMOTE
-            if ((listen_sck=socket(AF_INET, SOCK_STREAM, 0)) < 0){
-                error("Error creating the socket\n");
-                return -1;
-            }
-
-            int enable = 1;
-            // enable the reuse of the address
-            if (setsockopt(listen_sck, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-                error("setsockopt(SO_REUSEADDR) failed\n");
-
-            struct sockaddr_in serv_addr;
-            serv_addr.sin_family = AF_INET; 
-            serv_addr.sin_addr.s_addr = INADDR_ANY; // still listening from any interface
-            serv_addr.sin_port = htons( handshakeAddr.port );
-
-        #endif
-
-        int bind_err;
-        if ((bind_err = bind(listen_sck, (struct sockaddr*)&serv_addr,sizeof(serv_addr))) < 0){
-            error("Error binding: %d -- %s\n", bind_err, strerror(errno));
-            return -1;
-        }
-
-        if (listen(listen_sck, MAXBACKLOG) < 0){
-            error("Error listening\n");
-            return -1;
-        }
-        
-        return 0;
-    }
-
-    void svc_end() {
-        close(this->listen_sck);
-
-        #ifdef LOCAL
-            unlink(this->acceptAddr.address.c_str());
-        #endif
-        
-        #ifdef INIT_CUSTOM
-        ABT_finalize();
-        #endif
-
-    }
     /* 
         Here i should not care of input type nor input data since they come from a socket listener.
         Everything will be handled inside a while true in the body of this node where data is pulled from network
     */
-    message_t *svc(message_t* task) {        
+    message_t *svc(message_t* task) {  
+        printf("In svc method\n");      
         fd_set set, tmpset;
         // intialize both sets (master, temp)
         FD_ZERO(&set);
@@ -321,11 +345,11 @@ public:
                         if (connfd == -1){
                             error("Error accepting client\n");
                         } else {
+                            FD_SET(connfd, &set);
                             if(connfd > fdmax) fdmax = connfd;
 
                             this->handshakeHandler(connfd);
                             handshakes++;
-                            close(connfd);
                         }
                         continue;
                     }
@@ -333,7 +357,7 @@ public:
             }
         }
         std::vector<ABT_thread*> threads;
-
+        printf("Waiting now...\n");
         for (auto &&mid : mids)
         {
             ABT_thread* aux = new ABT_thread();
@@ -343,37 +367,29 @@ public:
 
         finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
+        printf("Returning EOS\n");
         return this->EOS;
     }
 
-    // Necessary to access internal fields in the RPC callbacks
     friend void ff_rpc(hg_handle_t handle);
     friend void ff_rpc_shutdown(hg_handle_t handle);
     friend void ff_rpc_shutdown_internal(hg_handle_t handle);
 
+
 protected:
-    ff_endpoint                     handshakeAddr;	
     std::vector<ff_endpoint_rpc*>   endRPC;
-    size_t                          input_channels;
-    std::map<int, int>              routingTable;
-	int                             coreid;
     int                             busy;
 
-    size_t                          neos = 0;
-    int                             listen_sck;
-    int                             last_receive_fd = -1;
-    std::vector<margo_instance_id*> mids;
     ABT_pool                        pool_e1;
     ABT_xstream                     xstream_e1;
+    std::vector<margo_instance_id*> mids;
     size_t                          handshakes = 0;
 
 };
 
-/*
- * An RPC-based receiver node enabled for both internal and external
- * communications on multiple endpoints.
- */
-class ff_dreceiverRPCH: public ff_dreceiverRPC {
+
+class ff_dreceiverHRPC: public ff_dAreceiverH, public ff_dreceiverBaseRPC {
+
 protected:
     void register_rpcs(margo_instance_id* mid) {
         hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc_internal",
@@ -388,85 +404,41 @@ protected:
     }
 
     virtual void registerEOS(bool internal) {
-        if(!internal) {
-            if (++externalNEos == (input_channels-internalConnections))
-                for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
-        } else {
-            if (++internalNEos == internalConnections)
-                ff_send_out_to(this->EOS, get_num_outchannels()-1);
-        }
-
-        ff_dreceiverRPC::registerEOS(internal);
-            
-    }
-
-    virtual int handshakeHandler(const int sck){
-        size_t size;
-        struct iovec iov; iov.iov_base = &size; iov.iov_len = sizeof(size);
-        switch (readvn(sck, &iov, 1)) {
-           case -1: error("Error reading from socket\n"); // fatal error
-           case  0: return -1; // connection close
-        }
-
-        size = be64toh(size);
-
-        char groupName[size];
-        if (readn(sck, groupName, size) < 0){
-            error("Error reading from socket groupName\n"); return -1;
-        }
-        
-        bool internalGroup = internalGroupsNames.contains(std::string(groupName,size));
-        isInternalConnection[sck] = internalGroup; // save somewhere the fact that this sck represent an internal connection
-
-        if (internalGroup) return this->sendRoutingTable(sck, internalDestinations);
-
-
-        std::vector<int> reachableDestinations;
-        for(const auto& [key, value] :  this->routingTable) reachableDestinations.push_back(key);
-        return this->sendRoutingTable(sck, reachableDestinations);
-    }
-
-    void forward(message_t* task, int sck){
-        if (isInternalConnection[sck]) ff_send_out_to(task, this->get_num_outchannels()-1);
-        else ff_dreceiverRPC::forward(task, sck);
-    }
-
+        ff_dAreceiverH::registerEOS(internal);
+        if(neos == input_channels)
+            for (auto &&mid : mids) {
+                margo_finalize(*mid);
+            }
+    } 
 
 public:
     // Multi-endpoint extension
-    ff_dreceiverRPCH(ff_endpoint handshakeAddr,
+    ff_dreceiverHRPC(ff_endpoint handshakeAddr,
         std::vector<ff_endpoint_rpc*> endRPC, size_t input_channels,
         std::map<int, int> routingTable = {{0,0}},
         std::vector<int> internalDestinations = {0},
         std::set<std::string> internalGroupsNames = {},
         int coreid = -1, int busy = 0):
-            ff_dreceiverRPC(handshakeAddr, endRPC, input_channels, routingTable,
-                coreid, busy),
-            internalDestinations(internalDestinations),
-            internalGroupsNames(internalGroupsNames) {
-        internalConnections = this->internalGroupsNames.size();
+            ff_dAreceiverBase(handshakeAddr, input_channels, routingTable, coreid),
+            ff_dAreceiverH(handshakeAddr, input_channels, routingTable, internalDestinations, internalGroupsNames, coreid, busy),
+            ff_dreceiverBaseRPC(handshakeAddr, endRPC, input_channels, routingTable, coreid, busy) {
         // Registering internal version of already initialized mids by base
         // constructor
         for (auto &&mid: this->mids)
         {
             register_rpcs(mid);
         }
+        printf("Finished const\n");
     }
 
     // Necessary to access internal fields in the RPC callbacks
     friend void ff_rpc_shutdown(hg_handle_t handle);
     friend void ff_rpc_shutdown_internal(hg_handle_t handle);
 
-protected:
-    std::vector<int> internalDestinations;
-    std::map<int, bool> isInternalConnection;
-    size_t internalConnections = 0;
-    std::set<std::string> internalGroupsNames;
-    size_t internalNEos = 0, externalNEos = 0;
 };
 
-
 void ff_rpc(hg_handle_t handle) {
+    printf("Starting external\n");
     hg_return_t             hret;
     ff_rpc_in_t             in;
     const struct hg_info*   info;
@@ -480,14 +452,15 @@ void ff_rpc(hg_handle_t handle) {
     hret = margo_get_input(handle, &in);
     assert(hret == HG_SUCCESS);
 
-    ff_dreceiverRPC* receiver =
-        (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
+    ff_dreceiverBaseRPC* receiver =
+        (ff_dreceiverBaseRPC*)margo_registered_data(mid, info->id);
 
     //TODO: change this into a call to forward
     receiver->ff_send_out_to(in.task, receiver->routingTable[in.task->chid]);
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
+    printf("Ending external\n");
 
     return;
 }
@@ -495,6 +468,8 @@ DEFINE_MARGO_RPC_HANDLER(ff_rpc)
 
 
 void ff_rpc_internal(hg_handle_t handle) {
+    printf("Starting internal\n");
+
     hg_return_t             hret;
     ff_rpc_in_t             in;
     const struct hg_info*   info;
@@ -508,14 +483,16 @@ void ff_rpc_internal(hg_handle_t handle) {
     hret = margo_get_input(handle, &in);
     assert(hret == HG_SUCCESS);
 
-    ff_dreceiverRPCH* receiver =
-        (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
+    ff_dreceiverHRPC* receiver =
+        (ff_dreceiverHRPC*)margo_registered_data(mid, info->id);
 
     //TODO: change this into a call to forward
     receiver->ff_send_out_to(in.task, receiver->get_num_outchannels()-1);
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
+    printf("Ending internal\n");
+
 
     return;
 }
@@ -523,6 +500,8 @@ DEFINE_MARGO_RPC_HANDLER(ff_rpc_internal)
 
 
 void ff_rpc_shutdown(hg_handle_t handle) {
+    printf("Starting shutdown\n");
+
     const struct hg_info*   info;
     margo_instance_id       mid;
 
@@ -531,12 +510,14 @@ void ff_rpc_shutdown(hg_handle_t handle) {
     mid = margo_hg_info_get_instance(info);
     assert(mid != MARGO_INSTANCE_NULL);
 
-    ff_dreceiverRPC* receiver =
-        (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
+    ff_dreceiverBaseRPC* receiver =
+        (ff_dreceiverBaseRPC*)margo_registered_data(mid, info->id);
     
     receiver->registerEOS(false);
 
     margo_destroy(handle);
+    printf("Ending shutdown\n");
+
 
     return;
 }
@@ -544,6 +525,7 @@ DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
 
 
 void ff_rpc_shutdown_internal(hg_handle_t handle) {
+    printf("Starting shutinternal\n");
 
     const struct hg_info*   info;
     margo_instance_id       mid;
@@ -553,12 +535,15 @@ void ff_rpc_shutdown_internal(hg_handle_t handle) {
     mid = margo_hg_info_get_instance(info);
     assert(mid != MARGO_INSTANCE_NULL);
 
-    ff_dreceiverRPCH* receiver =
-        (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
+    ff_dreceiverHRPC* receiver =
+        (ff_dreceiverHRPC*)margo_registered_data(mid, info->id);
     
     receiver->registerEOS(true);
     margo_destroy(handle);
+    printf("Ending shutinternal\n");
 
     return;
 }
 DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal);
+
+#endif

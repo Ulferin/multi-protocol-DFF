@@ -44,6 +44,7 @@
 
 #include "ff_dsender_rpc.hpp"
 #include "ff_dreceiver_rpc.hpp"
+// #include "ff_dbase_comm.hpp"
 
 using namespace ff;
 std::mutex mtx;
@@ -197,6 +198,7 @@ int main(int argc, char*argv[]){
     } else if (atoi(argv[1]) == 1){
         // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}, {0,1}, {"G2"}));
         // gFarm.add_collector(new ff_dsenderH({g2,g3}, "G1", {"G2"}));
+        // gFarm.add_emitter(new ff_dreceiverHRPC(g1, {&G0toG1_rpc, &G2toG1_rpc}, 2, {{0, 0}}, {0,1}, {"G2"}, -1, 1));
         gFarm.add_emitter(new ff_dreceiverRPCH(g1, {&G0toG1_rpc, &G2toG1_rpc}, 2, {{0, 0}}, {0,1}, {"G2"}, -1, 1));
         gFarm.add_collector(new ff_dsenderRPCH({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, -1, 1));
 
@@ -217,6 +219,7 @@ int main(int argc, char*argv[]){
     } else if (atoi(argv[1]) == 2) {
         // gFarm.add_emitter(new ff_dreceiverH(g2, 2, {{1, 0}}, {2,3}, {"G1"}));
         // gFarm.add_collector(new ff_dsenderH({g1, g3}, "G2", {"G1"}));
+        // gFarm.add_emitter(new ff_dreceiverHRPC(g2, {&G0toG2_rpc, &G1toG2_rpc}, 2, {{1, 0}}, {2,3}, {"G1"}, -1, 1));
         gFarm.add_emitter(new ff_dreceiverRPCH(g2, {&G0toG2_rpc, &G1toG2_rpc}, 2, {{1, 0}}, {2,3}, {"G1"}, -1, 1));
         gFarm.add_collector(new ff_dsenderRPCH({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}, -1, 1));
 
@@ -240,6 +243,7 @@ int main(int argc, char*argv[]){
         
     } else {
         // gFarm.add_emitter(new ff_dreceiver(g3, 2));
+        // gFarm.add_emitter(new ff_dreceiverBaseRPC(g3, {&G1toG3_rpc, &G2toG3_rpc}, 2, {std::make_pair(0, 0)}, -1, 1));
         gFarm.add_emitter(new ff_dreceiverRPC(g3, {&G1toG3_rpc, &G2toG3_rpc}, 2, {std::make_pair(0, 0)}, -1, 1));
 		gFarm.add_workers({new WrapperIN(new Sink(), 1, true)});
 		
