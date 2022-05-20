@@ -88,7 +88,7 @@ struct Lnode : ff_monode_t<myTask_t>{
 
     myTask_t* svc(myTask_t* in){
         std::cout << "Lnode " << generatorID << "( " << get_my_id() << ") starting generating tasks!" << std::endl;
-        printf("[LNode-%d] just received message: %s\n", generatorID, in->str.c_str());
+        // printf("[LNode-%d] just received message: %s\n", generatorID, in->str.c_str());
         for(int i = 0; i < numWorker; i++) {
 			myTask_t* out = new myTask_t;
 			out->str = std::string(std::string("Task" + std::to_string(i) + " generated from " + std::to_string(generatorID) + " for " + std::to_string(i)));
@@ -112,7 +112,7 @@ struct Rnode : ff_minode_t<myTask_t>{
     int ID;
     Rnode(int id): ID(id) {}
     myTask_t* svc(myTask_t* in){
-        printf("[RNode-%d] just received message: %s\n", ID, in->str.c_str());
+        // printf("[RNode-%d] just received message: %s\n", ID, in->str.c_str());
         in->str =std::string(std::string(in->str + " received by Rnode " + std::to_string(ID) + " from channel " +  std::to_string(get_channel_id())));
         return in;
     }

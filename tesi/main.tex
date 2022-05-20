@@ -1,0 +1,174 @@
+% \documentclass[12pt, letterpaper]{article}  % change to >11 pt if you like, and change article with report
+
+
+\RequirePackage{fix-cm}
+\documentclass[12pt]{article}
+\usepackage[fontsize=11.2pt]{scrextend}
+\usepackage[utf8]{inputenc}
+\usepackage[letterpaper, top=3.2cm, bottom=3.5cm, left=2.86cm, right=2.86cm]{geometry}
+
+\usepackage{listings} %to insert code listings
+\usepackage[table,x11names]{xcolor}
+\usepackage{stackengine}
+% \newlength\llength
+% \llength=1.38ex\relax
+
+\usepackage{textcomp} % to write angular brackets with \textlangle
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{columns=flexible}
+
+% To define figures, listings, tables, etc with section counting
+\usepackage{chngcntr}
+\counterwithin{figure}{section}
+\AtBeginDocument{\counterwithin{lstlisting}{section}}
+
+\usepackage{titling}
+\usepackage[backend=biber, sorting=none]{biblatex}
+\usepackage{changepage}
+\usepackage{lastpage} %info sul # dell'ultima pagina del documento
+\usepackage{fancyhdr} %per modificare dimensioni,margini, intestazioni e righe a piè di pagina
+
+
+\usepackage{tabularx} % to build flexible tables
+\usepackage{array}
+\usepackage{array,booktabs}% http://ctan.org/pkg/{array,booktabs}
+
+\usepackage{makecell, caption, chngcntr} %
+\usepackage{subcaption}
+
+\usepackage{graphicx}
+\graphicspath{/home/federico/Downloads/tesi}
+\usepackage{color}
+\usepackage{graphbox}
+\usepackage[colorlinks=true]{hyperref}
+
+\usepackage[]{todonotes}
+%\usepackage[disable]{todonotes}
+\newcommand{\td}[1]{\todo[inline]{#1}}
+
+\usepackage{siunitx} % used for scientific notation like 1e-10
+\sisetup{output-exponent-marker=\ensuremath{\mathrm{e}}}
+\usepackage{float}
+\usepackage{bm}
+\usepackage{layouts}
+
+
+\newcommand{\hr}[2]{\hyperref[#1]{\textbf{#2 \ref{#1}}}}
+\newcommand{\ttt}[1]{\texttt{#1}}
+\newcommand{\subtitle}[1]{%
+  \posttitle{%
+    \par\end{center}
+    \begin{center}\large#1\end{center}
+    \vskip0.5em}%
+}
+\newcommand\setrow[1]{\gdef\rowmac{#1}#1\ignorespaces}
+\newcommand\clearrow{\global\let\rowmac\relax}
+\clearrow
+\newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
+
+\definecolor{Maroon}{cmyk}{0, 0.87, 0.68, 0.32}
+\usepackage[colorlinks=true]{hyperref}
+\hypersetup{
+    colorlinks=true,
+    citecolor=black,
+    filecolor=black,
+    linkcolor=black, % colore dei link interni
+    urlcolor=Maroon  % colore dei link interniesterni
+}
+
+
+\fancypagestyle{plain}{
+  % cancella tutti i campi di intestazione e piè di pagina
+  \fancyhf{}
+  
+  \cfoot{Page \thepage{} of \pageref{LastPage}} %es: pag: 4 di 10
+
+  %linea orizzontale alle posizioni top e bottom della pagina
+  \renewcommand{\headrulewidth}{0 pt}  
+  \renewcommand{\footrulewidth}{0 pt}
+}
+
+\pagestyle{plain} 
+\addbibresource{mybib.bib}
+
+\title{\vspace{-2cm}\textbf{A multi-protocol communication layer for FastFlow's distributed runtime}}
+% \subtitle{\textbf{An analysis}}
+\author{
+    \normalsize{\textbf{Federico Finocchio} - 516818}\\
+    \normalsize{MSCS: Data and Knowledge. \underline{f.finocchio@studenti.unipi.it}}\\\\
+}
+
+\makeatletter
+\renewenvironment{abstract}{%
+    \if@twocolumn
+      \section*{\abstractname}%
+    \else %% <- here I've removed \small
+      \begin{center}%
+        {\bfseries \normalsize\abstractname\vspace{\z@}}%  %% <- here I've added \Large
+      \end{center}%
+      \quotation
+    \fi}
+    {\if@twocolumn\else\endquotation\fi}
+\makeatother
+
+\begin{document}
+\date{}
+\maketitle
+    
+% \begin{abstract}
+% \normalsize
+% \end{abstract}
+\tableofcontents
+\newpage
+\sloppy
+\section*{Introduction}
+\label{introduction}
+\addcontentsline{toc}{section}{\nameref{introduction}}
+In this thesis we aim at studying and developing a transparent communication layer to enable FastFlow's distributed runtime to transition from shared memory setting to distributed setting, employing heterogeneous connections between groups. Moreover, we aim at developing a generic set of API calls which will allow to plug different protocols without relying on a specific communication framework. The communication layer relies on a multi-protocol RPC framework in order to implement communication between nodes, and the only effort required for the application programmer is related to the declaration of the desired protocol to be used for communication. The transparent API which we aim at providing is completely independent from the underlying communication framework, thus allowing the FastFlow developer to transparently plug his own protocols and communication drivers to tweak the application communication channels. A natural preliminary phase of this work is strictly tied to the analysis of communication frameworks which are available to the application programmer in order to leverage efficiently multiple protocols during communication between distributed groups. The preliminary work is related to the study and analysis on existing libraries that could help the development of FastFlow's communication layer. Given the desire of being as much independent as possible from external libraries, in this document we also analyse which are the dependencies and the limitations tied to the external libraries used to develop the communication layer. In the first part of this work we analysed the Margo \cite{mochi-core} library, it's underlying RPC framework called Mercury \cite{mochi-core, mercury} and the threading library which is used by Margo as a runtime framework, called Argobots \cite{argobots-paper}. The three analyzed frameworks are part of a much broad set of frameworks which are referred to as \textit{Mochi core}, as specified in \cite{mochi-core}.  The Mochi core provides a set of frameworks to enable communication, concurrency management and storage with a composition model. As appeared by the testing we performed, but as also described by its developers, the Mercury RPC framework is purposefully built to leverage HPC fabrics vendor protocols, sometimes resulting in a lack of support and faulty implementation for more classical transports like MPI and TCP. However, as per the latest release of Mercury framework, a general purpose plugin with full support for TCP connection was added. We show, for each of the analyzed libraries and frameworks, which are their advantages and drawbacks, with special focus on lowering the amount of dependencies and minimizing the knowledge of the communication layer about the data that are exchanged between nodes, in order to create communicating nodes completely agnostic about the types used during computation, allowing for parallelization of the serialization process and reducing the computation needed at the ``edge'' of each group.\newline
+
+Besides the limitations we have analyzed, which are mostly related to technical aspects and not on the usability of the presented frameworks, the simplicity of creating communication nodes and connecting them via a high-level communication library such as Margo, without requiring too many modification in the original application code, can be a good driver to experiment and develop an initial set of API calls which will allow to extend the communication layer functionalities and plug in a broader set of protocols which are still not supported by the used frameworks. Having an independent API is a natural and important step to remove strict dependencies from each of the technologies used to implement the communication functionalities, allowing extensibility with little to no changes in existing code.
+Besides the limitations we have found during the experimentation with the analyzed libraries, our analysis on those frameworks was anyway important to understand the power and utility of having a high level abstraction on top of very specific APIs which requires a deep understanding of how the underlying infrastructure works. Hence, it is conceptually interesting and it could be very helpful in the implementation of the final communication layer to retain some of the concepts introduced by the \textit{Mochi core} building blocks, which we present in the following sections.\newline
+
+The thesis uses a bottom-up approach to illustrate the overall picture of the used frameworks and to describe internally each of those frameworks. The thesis is organized as follows:
+\begin{itemize}
+    \item \hr{sec:mercury}{Chapter}: presents the core framework which provides the building blocks needed to implement RPC calls leveraging multiple transports. We describe the general structure of the framework, which will serve to describe the higher-level framework used to implement the communication layer in FastFlow's distributed runtime;
+    \item \hr{sec:argobots}{Chapter}: describes the runtime system which is used by the higher-level RPC framework in order to manage concurrent execution of different RPCs, to allow asynchronous execution of RPC-related callbacks and to simplify Mercury's progress loop;
+    \item \hr{sec:margo}{Chapter}: describes the high level framework used for the implementation of the multi-protocol interface for the communication layer in FastFlow's distributed runtime. We show how this framework leverages Mercury and Argobots functionalities to provide a parallel and efficient multi-protocol RPC framework;
+    \item \hr{sec:implementation}{Chapter}: gives insights on the integration of Margo's functionalities into the FastFlow's distributed communication layer. We show pseudo-code of the implemented classes and common use-cases for both the application and runtime programmer;
+    \item \hr{sec:testing}{Chapter}: focuses on the presentation of sample applications and testing we performed to evaluate the effectiveness of the implemented communication layer.
+\end{itemize}
+
+\input{chapters/Mercury}
+\input{chapters/Argobots}
+\input{chapters/Margo}
+\input{chapters/Implementation}
+\input{chapters/Testing}
+\newpage
+
+\printbibliography
+\newpage
+% \input{chapters/appendix}
+% \listoftodos
+\end{document}

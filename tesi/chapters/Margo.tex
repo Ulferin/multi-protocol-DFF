@@ -1,0 +1,155 @@
+\section{Margo}
+\label{sec:margo}
+Margo \cite{mochi-core} is a Mercury binding that uses Argobots as a runtime library. Just like Mercury, Margo requires both origin and target nodes to register for RPC calls associated with a specific identifier (a string) and an input/output type, which must necessarily be registered using the relative macros, as we describe in the following.\newline
+By using Argobots as a runtime library, Margo hides the handling of Mercury's progress loop by delegating it to a specific Argobots ES (namely, a physical thread). Moreover, Margo allows to freely manage how the various RPC associated callbacks will be dispatched among internal pools and external user defined pools. When initializing Margo, the user can specify its own pools and ESs that will be responsible for both progress loop and RPC calls, otherwise the programmer can decide to completely let Margo handle the calls with its own pools and ESs.\newline
+
+Being a binding between Mercury and Argobots, Margo retains all the concepts we defined in the previous section, however, Margo greatly simplifies the development of RPC-based services by introducing extensions to the Mercury-based model:
+\begin{itemize}
+    \item more intuitive communication: Margo defines wrappers based on Argobots runtime in order to present asynchronous communication mechanisms as a user-level thread communication model. Communication facilities are handled by ULTs, which can be suspended and resumed as communication proceeds;
+    \item progress loop abstraction: polling and communication events are internally managed by a ULT. Policies for handling RPC-related execution can be manually defined and tweaked to better suit the application needs. In this way, multiple providers can be easily handled and multiplexed by the same core process, without the need of handling multiple progress loops at once;
+    \item renewed polling strategy: Margo allows both busy and idle mode, which allows to tweak Margo for both performance and resource consumption needs.
+\end{itemize}
+\subsection{RPC registration process}
+\label{sec:rpc-reg}
+In this section we describe the RPC registration process, which follows a standardized procedure and requires RPC input and output types, as well as routines to pack the types into network buffers, to be defined by both origin and target nodes. Additionally, the callback function to be executed must be defined by the target node with a predefined signature in order for Margo to encapsulate it in the internal service functions which triggers RPC execution upon receiving the request from the origin node.\newline
+
+The registration process must proceed by:
+\begin{itemize}
+    \item defining input and output types: as shown in \hr{type-rpc}{Listing}, RPC arguments types must be defined by the means of a C-style \texttt{struct} datatype, which can internally contain all the necessary types for the RPC call;
+    \item defining the packing routine: \hr{packing-routine}{Listing} defines the routine which is internally used by Margo to correctly write to and read from the network buffers which are then used to send and receive RPC data arguments. Margo also offers a ``simplified'' way of defining such routines, which we omit for sake of presentation and to better explain how the internal network buffers are built and filled with data. Each packing routine is strictly tied to a specific type. Having a type \texttt{X}, the routine must be defined as \texttt{hg\_proc\_X}, and it must encode and decode each of the field contained in the \texttt{X} struct type. Additionally, Margo can be built with XDR capabilities which will in turn change the way data are represented in the buffer exchanged between nodes, however, since FastFlow distributed version shares already serialized streams, we don't rely upon this functionality.
+    \item defining the actual RPC callback: this step is only required by the node which will act as a ``server'' for the specific RPC. In \hr{rpc-def}{Listing} we provide a sample RPC callback declaration and definition, which allows the server node to define the function to be executed upon an RPC request from another node. RPC callback declaration and definition require also a call to specific macros defined by Margo, which will wrap the RPC callback defined by the user with Argobots-aware code, necessary for Margo to dispatch RPC callbacks among different ULTs.
+    \item associating an ID to the RPC: after having registered all the types and routines, both origin and target nodes have to associate a common ID for the RPC that they intend to use. This can be done as shown in Listings \textbf{\ref{margo-register-origin}} and \textbf{\ref{margo-register-target}}. The registering process is complete, and the origin node can now use the returned RPC identifier to issue requests to the listening target node by using a \texttt{margo\_forward} call. Note that, after the registration process is complete, the listening node can receive RPCs calls with the specified ID from all the origin nodes which registered an RPC with the same ID.  
+\end{itemize}
+
+
+\noindent\begin{minipage}{.40\textwidth}
+\begin{lstlisting}[caption=RPC type definition.,language=C++, style=mystyle, label=type-rpc]{type-rpc}
+typedef struct {
+    hg_int64_t   hash_val;
+    hg_uint64_t  size;
+    hg_bulk_t    bulk_handle;
+} ff_rpc_in_t;
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}[caption=Packing routine definition. Allows the Margo framework to manage data from/to the network buffer used internally to ship data during RPC calls. Each of the type-specific routines allows data copies which are aware of the size of data to be packed/unpacked.,language=C++, style=mystyle, label=packing-routine]{packing-routine}
+hg_return_t
+hg_proc_ff_rpc_in_bulk_t(hg_proc_t proc,
+                         void* data) {
+    
+    ...
+    // Retrieve input data structure
+    ff_rpc_in_t* in = (ff_rpc_in_t*)data;
+
+    // Write/read data to/from Margo's
+    // send/receive buffer carried by `proc'
+    hg_proc_hg_int64_t(proc,
+            &in->hash_val);
+
+    // We call a specific routine for each
+    // field in the RPC input struct
+    hg_proc_hg_uint64_t(proc,
+            &in->size);
+
+    hg_proc_hg_bulk_t(proc,
+            &in->bulk_handle);
+
+    ...
+}
+\end{lstlisting}
+\end{minipage}
+\begin{center}
+\vspace{-0.1cm}
+\begin{minipage}{0.55\textwidth}
+\begin{lstlisting}[caption=RPC declaration and definition,language=C++, style=mystyle, label=rpc-def]{rpc-def}
+void ff_rpc(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc);
+
+void ff_rpc(hg_handle_t handle) {
+    ff_rpc_in_t           in;
+    const struct hg_info* hgi;
+    margo_instance_id     mid;
+
+    // Get input data
+    margo_get_input(handle, &in);
+    
+    // Retrieve objects to identify current RPC
+    // and get back registered data
+    hgi = margo_get_info(handle);
+    mid = margo_hg_info_get_instance(hgi);
+
+    // Here data may be retrieved and used
+    // internally in the RPC call
+
+    margo_free_input(handle, &in);
+    return;
+}
+DEFINE_MARGO_RPC_HANDLER(ff_rpc)
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\begin{center}
+
+\begin{minipage}{.65\textwidth}
+\begin{lstlisting}[caption=Finalization of the registration process in the origin node. The register macro specifies the input/output expected types as well as the packing routines as described above.,language=C++, style=mystyle, label=margo-register-origin]{margo-register-origin}
+int main(int argc, char** argv) {
+    // Margo initialization code
+    ...
+
+    // Initialize the Margo instance used to perform
+    // Margo-related calls
+    margo_instance_id mid;
+    mid = margo_init(listening_addr, MARGO_CLIENT_MODE, 1, 1);
+    ...
+    my_rpc_id = MARGO_REGISTER(mid, "ff_rpc",
+                    ff_rpc_in_t, ff_rpc_out_t, NULL);
+    
+    // Looks up for a server 
+    hg_addr_t svr_addr;
+    margo_addr_lookup(mid,
+                    svr_addr_str, &svr_addr);
+    
+    // Creates the handle for the RPC call
+    hg_handle_t handle;
+    margo_create(mid, svr_addr,
+                    my_rpc_shutdown_id, &handle);
+    margo_forward(handle, NULL);
+    ...
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\begin{center}
+\vspace{-0.1cm}
+\begin{minipage}{.65\textwidth}
+\begin{lstlisting}[caption={Finalization of the registration process in the target node. The listening node only needs to register the RPC types and routines, as the origin node, and additionally it needs to specify the RPC callback for the registered ID.},language=C++, style=mystyle, label=margo-register-target]{margo-register-target}
+int main(int argc, char** argv) {
+    // Margo initialization code
+    ...
+
+    // Initialize the Margo instance used to perform
+    // Margo-related calls
+    margo_instance_id mid;
+    mid = margo_init(protocol, MARGO_SERVER_MODE, 1, 1);
+    my_rpc_id = MARGO_REGISTER(mid, "ff_rpc",
+                    ff_rpc_in_t, ff_rpc_out_t, ff_rpc);
+    
+    margo_wait_for_finalize(mid);
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\subsection{Margo analysis}
+As we pointed out in \S\ref{sec:mercury-analysis}, most of the limitations are tied to the support of the various plugins and their functionalities. Margo, besides sharing all these limitations, introduce an incredibly easy interface to implement multi-homed RPC services, which greatly simplifies the development of RPC-based FastFlow nodes.\newline
+
+The main limitation of the Margo library are mostly related to how RPC calls are handled, in particular with reference to data copies happening between the input data and the send/receive buffers used to ship RPC data through the network. However, further investigation is needed at this point in time to analyze how those limitations can be avoided, without relying on the bulk functionalities, which however remain a suitable fallback method if data copies are unavoidable. However, a further problem is introduced in the utilization of bulk transfers via RDMA where no responses are expected from the sender, in fact in this particular case one must be extremely careful about freeing memory that has still not been read from the remote end.\newline
+
+Margo, on its hand, introduces additional dependencies which are related to the libraries it uses in the underlying layers and how it handles configuration strings. The introduced dependencies are the following:
+\begin{itemize}
+    \item Mercury: as described in \S\ref{sec:mercury}, in particular requires for this framework to be built with \ttt{-DMERCURY\_USE\_SYSTEM\_BOOST:BOOL=OFF -DMERCURY\_USE\_BOOST\_PP:BOOL=ON}, which enable pre-processors macro in Mercury in case BOOST library is not present in the system. Since we do not want to be dependend on BOOST library, this is necessary since Margo uses these macros internally;
+    \item Argobots: as described in \S\ref{sec:argobots};
+    \item json-c: A JSON implementation for C language\cite{jsonc}, needed internally by Margo in order to generate configurations based on json-formatted strings provided at initialization of Margo instances.
+\end{itemize}

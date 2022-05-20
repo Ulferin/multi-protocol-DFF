@@ -271,7 +271,8 @@ protected:
             .hg_init_info  = &info      /* struct hg_init_info* */
         };
 
-        *mid = margo_init_ext(proto, MARGO_CLIENT_MODE, &args);
+        //NOTE: Server mode is necessary to make ucx work
+        *mid = margo_init_ext(proto, MARGO_SERVER_MODE, &args);
         assert(*mid != MARGO_INSTANCE_NULL);
         // margo_set_log_level(*mid, MARGO_LOG_TRACE);
     }

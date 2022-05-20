@@ -14,6 +14,7 @@ struct ff_endpoint_rpc : public ff_endpoint {
     ff_endpoint_rpc(std::string addr, int port=-1, std::string protocol="ofi+tcp"):
                 ff_endpoint::ff_endpoint(addr, port),
                 protocol(std::move(protocol)) {
+                    
         std::stringstream sstm;
         if(this->port < 0)
             //FIXME: this is only a temporary thing

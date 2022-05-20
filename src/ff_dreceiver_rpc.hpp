@@ -58,10 +58,6 @@ class ff_dreceiverRPC: public ff_monode_t<message_t> {
 protected:
 
     void init_ABT() {
-        #ifdef INIT_CUSTOM
-        margo_set_environment(NULL);
-        ABT_init(0, NULL);
-        #endif
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
             ABT_FALSE, &pool_e1);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
@@ -159,52 +155,6 @@ protected:
             {
                 margo_finalize(*mid);
             }        
-    }
-
-    // For TCP-based connections
-    virtual int handleRequest(int sck){
-   		int sender;
-		int chid;
-        size_t sz;
-        struct iovec iov[3];
-        iov[0].iov_base = &sender;
-        iov[0].iov_len = sizeof(sender);
-        iov[1].iov_base = &chid;
-        iov[1].iov_len = sizeof(chid);
-        iov[2].iov_base = &sz;
-        iov[2].iov_len = sizeof(sz);
-
-        switch (readvn(sck, iov, 3)) {
-           case -1: error("Error reading from socket\n"); // fatal error
-           case  0: return -1; // connection close
-        }
-
-        // convert values to host byte order
-        sender = ntohl(sender);
-        chid   = ntohl(chid);
-        sz     = be64toh(sz);
-
-        if (sz > 0){
-            char* buff = new char [sz];
-			assert(buff);
-            if(readn(sck, buff, sz) < 0){
-                error("Error reading from socket\n");
-                delete [] buff;
-                return -1;
-            }
-			message_t* out = new message_t(buff, sz, true);
-			assert(out);
-			out->sender = sender;
-			out->chid   = chid;
-
-            this->forward(out, sck);
-            return 0;
-        }
-
-
-        registerEOS(sck);
-
-        return -1;
     }
 
 public:
@@ -479,6 +429,12 @@ void ff_rpc(hg_handle_t handle) {
 
     hret = margo_get_input(handle, &in);
     assert(hret == HG_SUCCESS);
+    
+    //NOTE: this may cause problem while using ucx
+    // hg_size_t size = 128;
+    // char addr_string[128];
+    // margo_addr_to_string(mid, addr_string, &size, info->addr);
+    // printf("Received from: %s\n", addr_string);
 
     ff_dreceiverRPC* receiver =
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
