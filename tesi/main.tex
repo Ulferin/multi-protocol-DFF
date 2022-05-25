@@ -2,11 +2,13 @@
 
 
 \RequirePackage{fix-cm}
-\documentclass[12pt]{article}
+\documentclass[12pt, oneside]{report}
 \usepackage[fontsize=12pt]{scrextend}
 \usepackage[utf8]{inputenc}
-\usepackage[letterpaper, top=3.2cm, bottom=3.5cm, left=2.86cm, right=2.86cm]{geometry}
+\usepackage[letterpaper]{geometry}
 
+\newenvironment{asbtract}{}{}
+\usepackage{abstract}
 \usepackage{listings} %to insert code listings
 \usepackage[table,x11names]{xcolor}
 \usepackage{stackengine}
@@ -73,6 +75,7 @@
 \usepackage{float}
 \usepackage{bm}
 \usepackage{layouts}
+\usepackage{lipsum}
 
 
 \newcommand{\hr}[2]{\hyperref[#1]{\textbf{#2 \ref{#1}}}}
@@ -133,20 +136,24 @@
     {\if@twocolumn\else\endquotation\fi}
 \makeatother
 
+\setcounter{tocdepth}{1}
+
 \begin{document}
 \date{}
 \maketitle
     
-% \begin{abstract}
-% \normalsize
-% \end{abstract}
+\begin{abstract}
+\normalsize
+Handling the explosion in data production rates from sensors and people require amount of storage and computational power which is not anymore possible in single powerful machines, thus a shift to distributed computing is being recorded. This shift in programming environment requires new tools and frameworks, as well as new abstractions, to allow application developers to provide efficient applications which deal with real-time decisions in an accurate and actionable way.
+
+FastFlow framework provides a set of abstraction that targets both the application and RTS developer, allowing via structured parallel programming the development of efficient parallel applications via a compositional model based on LEGO-style building blocks. In this work we introduce a new abstraction at the communication layer, allowing to connect remote nodes via a multitude of transports in different parts of the FastFlow application, allowing heterogeneity in computing nodes, a must in cloud applications.
+\end{abstract}
 \tableofcontents
 \newpage
-\sloppy
-\section*{Introduction}
+\chapter*{Introduction}
 \label{introduction}
 \addcontentsline{toc}{section}{\nameref{introduction}}
-In the past years we are experiencing an explosion in the quantities of produced data, both by sensors and people. These huge amount of data challenge both the storage capabilities of single machines and the network being used to transfer data between multiple machines. Moreover, the amount of computation needed to handle the necessary data for modern applications, like (near) real-time applications that generate near-continuous data, is much bigger than the one offered by current systems. Thus, as we witnessed the shift from sequential to parallel programming, we are now observing a new shift from parallel to distributed computing. Moreover, as the difference between Big Data and High Performance Computing becomes more and more blurred, and due to this new evolution in the way application are developed and deployed, new frameworks, programming models and tools have surfaced to help the programmer to deal with the complexity of designing parallel applications above the underlying distributed infrastructures \cite{survey-distributed}. In the transition to distributed computing, new extensive parallel processing and new analytics algorithms are needed in order to provide timely and actionable information \cite{big-data-movingforward}. However, dealing with scalable and parallel applications that can be deployed across the network is not an easy task, and abstractions are needed in order to allow the application developers to focus on the optimization of the uppermost layer, leaving, among all, communication and synchronization details to experts on the respective fields.
+In the past years we are experiencing an explosion in the quantities of produced data, both by sensors and people. These huge amount of data challenge both the storage capabilities of single machines and the network being used to transfer data between multiple machines. Moreover, the amount of computation needed to handle the necessary data for modern applications, like (near) real-time applications that generate near-continuous data, is much bigger than the one offered by current monolithic systems. Thus, as we witnessed the shift from sequential to parallel programming, we are now observing a new shift from parallel to distributed computing. Moreover, as the difference between Big Data and High Performance Computing becomes more and more blurred, and due to this new evolution in the way application are developed and deployed, new frameworks, programming models and tools have surfaced to help the programmer to deal with the complexity of designing parallel applications above the underlying distributed infrastructures \cite{survey-distributed}. In the transition to distributed computing, new extensive parallel processing and new analytics algorithms are needed in order to provide timely and actionable information \cite{big-data-movingforward}. However, dealing with scalable and parallel applications that can be deployed across the network is not an easy task, and abstractions are needed in order to allow the application developers to focus on the optimization of the uppermost layer, leaving, among all, communication and synchronization details to experts on the respective fields.
 
 The shift towards distributed computing introduces new challenges, like resource management, data distribution, coordination of participating processes and monitoring of the application. Given that, each of these challenges, acts at a different abstraction layer, application developers often prefer to rely over high-abstraction frameworks to abstract from the distributed challenges and focus only on the application development.\newline
 \todo[inline]{Aggiustare le ultime frasi}
@@ -165,8 +172,8 @@ The thesis uses a bottom-up approach to illustrate the overall picture of the us
     \item \hr{sec:testing}{Chapter}: focuses on the presentation of sample applications and testing we performed to evaluate the effectiveness of the implemented communication layer.
 \end{itemize}
 
-\input{chapters/Background}
 \input{chapters/FastFlow}
+\input{chapters/Background}
 \input{chapters/Mercury}
 \input{chapters/Argobots}
 \input{chapters/Margo}

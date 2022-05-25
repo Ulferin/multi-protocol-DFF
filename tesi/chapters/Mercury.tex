@@ -1,12 +1,12 @@
-\section{Mercury}
+\chapter{Mercury}
 \label{sec:mercury}
-Mercury \cite{mochi-core, mercury} is an asynchronous RPC framework purposefully built to efficiently provide communication services to HPC systems with high-performance fabrics. It provides an abstracted network implementation to enable transparent support to future systems and protocols, efficient use of existing native transport mechanisms, and support of large data arguments via the RDMA enabled interface. Moreover, it provides an asynchronous RPC interface, based on a callback system, that allows transfer of parameters and procedure calls in the context of both local and remote execution in order to completely remove the differentiation of communications between on and off-node.\newline
+Mercury \cite{mochi-core, mercury} is an asynchronous RPC framework purposefully built to efficiently provide communication services to HPC systems with high-performance fabrics. It provides an abstracted network implementation to enable transparent support to future systems and protocols, efficient use of existing native transport mechanisms, and support of large data arguments via the RDMA enabled interface. Moreover, it provides an asynchronous RPC interface, based on a callback system, that allows transfer of parameters and procedure calls in the context of both local and remote execution in order to completely remove the differentiation of communications between on and off-node.
 
-The library allows the execution of arbitrary functions via a system of function tagging and callbacks, coupled to a queue system that saves procedure calls which are pending and still not executed. The receiving process drives the progress loop in which arguments are retrieved, function calls are executed, and the results are sent back to the origin node.\newline
+The library allows the execution of arbitrary functions via a system of function tagging and callbacks, coupled to a queue system that saves procedure calls which are pending and still not executed. The receiving process drives the progress loop in which arguments are retrieved, function calls are executed, and the results are sent back to the origin node.
 
 Additionally, the library offers the possibility of being ported to various systems since the network layer is abstracted and the application interface is based on a simple set of network primitives for both point-to-point messaging and one-sided RDMA. The network abstraction layer functionalities are implemented on top of different plugins. The plugin system can be considered as a \textit{compatibility} layer, which implements the communication functionalities offered by different protocols. Examples of plugins are Libfabric \cite{libfabric, ofi_plugin}, MPI \cite{mpi_plugin} and UCX \cite{openucx}, and multiple protocols are offered by each of the plugin, ranging from vendor-specific protocols to more classic ones like TCP and UDP.\newline
 
-\subsection{RPC: a Mercury's perspective}
+\section{RPC: a Mercury's perspective}
 General RPC frameworks provide the possibility to serialize function parameters and ship them to a remote node that will execute the respective function call. As stated in \cite{mercury}, Mercury tries to address two main problems:
 \begin{itemize}
     \item inability to take advantage of HPC high performance communication protocols: standard frameworks are usually designed on top of TCP/IP protocols, which represent a limitation over the performances often required by HPC systems;
@@ -15,7 +15,7 @@ General RPC frameworks provide the possibility to serialize function parameters 
 
 Mercury addresses these limitations by offering an asynchronous and flexible RPC interface specifically tailored for HPC systems. To do this, Mercury exposes an abstracted API to perform asynchronous RPC as well as large data transfer, and completely relies on the underlying network implementation provided by the plugins, in order to be independent from the used transport mechanism. As stated in \cite{mercury}, Mercury's main purpose is to serve as a basis for higher-level frameworks that need to remotely exchange data in a distributed environment, by offering a flexible interface completely decoupled from the underlying protocol and system specifications.
 
-\subsection{Architecture}
+\section{Architecture}
 Mercury is built on a two-layer architecture, as shown in \hr{fig:mercury-rpc-components}{Figure}, where each layer provides an abstraction for specific functionalities. The lowermost layer offers abstractions needed to provide networking functionalities such as point-to-point messaging, address lookup, remote memory access, progress and cancellation. The uppermost layer is further divided in two service-level components, referred to as \textit{RPC interface} and \textit{bulk data interface}. The RPC interface allows the programmer to remotely execute function calls, shipping function arguments and receiving results from the remote node; the bulk interface, instead, complements the RPC interface and allows large data transfer via the creation of memory descriptors, which enables the possibility to initiate raw memory transfers using remote memory access, whenever the underlying system provides it.\newline
 \begin{figure}[H]
     \centering
@@ -26,7 +26,7 @@ Mercury is built on a two-layer architecture, as shown in \hr{fig:mercury-rpc-co
 
 Mercury extends the functionalities of another project, called \textit{I/O Forwarding Scalability Layer} (IOFSL)\cite{iofsl}, which allows RPC calls specifically related to file-system-specific I/O operations. By extending this layer, Mercury allows to generate RPC calls to generic functions that can be dynamically defined and registered in the application using Mercury.
 
-\subsubsection{Plugins}
+\subsection{Plugins}
 \label{plugins}
 The plugin functionalities are referred to as a ``\textit{support for various network protocols that can be easily added and selected at runtime}'' \cite{nal_guide}.
 Given that Mercury's main aim is to leverage the high performance solutions provided by HPC network fabrics, which requires specific low-level vendor APIs, Mercury relies on plugins as an intermediate layer for network functionalities. In order to overcome the burden of implementing the network abstraction layer directly on top of those APIs, Mercury relies over various plugins for the implementation of functionalities like RDMA and point-to-point messaging. A multitude of plugins are provided by the framework, however the vast majority of them is under testing or being deprecated, leaving as ``stable'' only the ones related to Libfabric, UCX and shared-memory \cite{sm_plugin} for local nodes communication. We show in \S\ref{limitations} the main limitations we have encountered during testing of these plugins.\newline
@@ -61,7 +61,7 @@ Switching between various plugins is very simple and can be done by specifying a
 
 Note, however, that plugins may behave differently regarding how the format string is provided, in fact plugins do not manage incomplete or incorrect configuration strings uniformly. Some of these issues are reported in \S\ref{limitations}.
 
-\subsubsection{Network Abstraction Layer}
+\subsection{Network Abstraction Layer}
 \label{sec:NAL}
 The Network Abstraction Layer (NAL) provides an abstraction of the network infrastructure above which the communications are executed. It is a simple abstraction which only provides limited functionalities, like address lookup, point-to-point messaging, remote memory access, progress, and cancellation.\newline
 
@@ -79,7 +79,7 @@ The functionalities offered by the NAL refers to three main mechanisms:
 The network abstraction is designed to allow emulation of one-sided operations, such as RDMA, on top of two-sided operations. In this way, Mercury can easily adapt to protocols which only supports fixed operations, like TCP/IP ones, where one-sided communications are not possible.
 
 
-\subsubsection{RPC Layer}
+\subsection{RPC Layer}
 The RPC layer allows nodes to issue remote calls, and it is based on the messaging model described in \S\ref{sec:NAL}. RPC requests are based on the common knowledge of origin and target nodes on how to encode and decode function parameters and return values.\newline
 \begin{figure}[H]
     \centering
@@ -97,7 +97,7 @@ Two situation may occur during an RPC request, and different mechanisms are used
 \end{itemize}
 
 From the target side, receiving an \textit{unexpected} message with a specified ID translates in the execution of the callback registered at startup by decoding the parameters sent by the origin, and sending the outputs by encoding them at the end of execution, if the registered RPC expects a response.
-\subsubsection{Bulk Layer}
+\subsection{Bulk Layer}
 This layer allows to send large data by avoiding intermediate memory copies. It is performed by creating a local memory handle which points to previously registered areas of memory (not necessarily contiguous) which the target node can access via RDMA operations. The bulk layer is directly built on top of the RDMA interface defined in the network abstraction layer. \newline
 
 \begin{figure}[H]
@@ -111,7 +111,7 @@ A typical execution flow for a bulk request is depicted in \hr{fig:bulk-flow}{Fi
 
 Memory handles are an important building block for memory transfer, in particular in such cases where non-contiguous memory is to be transferred. The memory of the communicating nodes is abstracted by the memory handle and allows to access memory in a transparent way without modifications to the process described above.
 
-\subsection{Resilience and Fault Tolerance}
+\section{Resilience and Fault Tolerance}
 The fault tolerance mechanism is mainly provided by the possibility to interrupt calls and reclaim resources of pending operations after these have been signaled as \textit{cancelled}. Cancellation is an asynchronous and local operation. From a user perspective, completion of offloaded operations is known only when the associated callback is placed in the local queue of pending operations. When a callback is triggered and the operation was locally canceled by the user, that operation is reported as canceled and aborted.\newline
 
 A basic flow of events related to the cancellation of an operation is shown in \hyperref[fig:op-cancel]{\textbf{Figure \ref{fig:op-cancel}}}.
@@ -123,18 +123,18 @@ A basic flow of events related to the cancellation of an operation is shown in \
     \label{fig:op-cancel}
 \end{figure}
 
-\subsection{Dependencies}
+\section{Dependencies}
 As reported by \cite{merc_git}, the dependencies are mostly related to the intended plugin to integrate inside a specific application. No further requirements are specified by the Mercury's developers as needed for the installation and use of their framework.
 
 
-\subsection{Mercury analysis}
+\section{Mercury analysis}
 \label{sec:mercury-analysis}
 Mercury comes with lots of functionalities and drawbacks. We list in this section all the advantages and the main limitations of the Mercury framework encountered during the testing phase, which are therefore shared by all the higher-level libraries which are based on it.
 
-\subsubsection{Advantages}
+\subsection{Advantages}
 Mercury's interface allows to easily enable communication using a system of plugin which offers compatibility with a multitude of network and vendor specific protocols. The Mercury library, once again, shows the importance of having an abstraction layer to provide efficient use of underlying protocols without having a complete expertise on how they work. Being able to address different needs and to leverage the functionalities of different systems, by the means of a general API, makes implementing communication on such systems painless and less error prone. Moreover, Mercury's capability of handling different protocols with no code changes at all allows portability of applications to new systems which may provide only vendor specific protocols or which does not offer support to common transports such as TCP or MPI.
 
-\subsubsection{Limitations}
+\subsection{Limitations}
 \label{limitations}
 Mercury, however, is not exempt from problems and limitations. In this section we gathered all the main limitations that are known and which we discovered during the testing phase of the presented framework. As specified in \S\ref{plugins}, MPI plugin is deprecated and not maintained \cite{git_mercury_mpi}. In fact, Mercury's developers suggest the use of libfabric plugin to leverage efficient HPC communication mechanisms, and UCX plugin as a general purpose plugin. As specified in \cite{nal_guide}, MPI is considered to be present in almost all systems, and the functionality offered by the NAL are only intended for prototyping and testing, this suggesting that in case an MPI implementation is needed, one shouldn't rely on Mercury's interface.\newline
 

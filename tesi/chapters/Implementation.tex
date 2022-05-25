@@ -1,11 +1,11 @@
-\section{Implementation}
+\chapter{Implementation}
 \label{sec:implementation}
-\subsection{Communication classes}
+\section{Communication classes}
 We developed FastFlow's communication classes by extending the \ttt{ff\_node\_t} class, in such a way the developed classes can be used in any context where a \ttt{ff\_node\_t} can be used. However, we show that they naturally sit at the extremes of a pipeline building block, since they offer functionalities to receive and forward data from and through the network.\newline
 
 The classes we implemented are strictly tied to the concepts of receiver and sender node, and they make use of Margo's capabilities of developing multi-endpoint services without requiring to manually handling progress loops. At the current stage of development, there is no personalized behaviour based on the endpoint which received a call to the registered RPCs. This represents the next main step in the evolution of the implemented classes. (De)Multiplexing, however, should be fairly easy to handle thanks to the internal mechanisms that Margo offers in order to identify the origin node which issued a request. Having personalized behaviour, depending on the specific endpoint, is very important to deal with the grouping concept introduced since the distributed version of FastFlow has been developed. Particularly pathological cases, where a personalized behaviour must be implemented given the specific endpoint on which the request is received, benefit from the automatized mechanisms offered by Margo. Moreover, the simplicity in handling multiple endpoints via the implemented classes allow to test a multitude of situations with little to no code changes.\newline
 
-\subsubsection{Receiver node}
+\subsection{Receiver node}
 Receiver node is a FastFlow \texttt{ff\_node\_t} that relies on a Margo instance initialized with \texttt{MARGO\_SERVER\_MODE}. This allows the receiver node to wait for incoming RPC requests at the specified addresses. A list of addresses can be provided at initialization, translating in a receiver node listening for the same set of RPC functionalities on all of the provided endpoints. \hr{receiver-skeleton}{Listing} shows pseudo-code of the implemented receiver node.
 \begin{lstlisting}[language=C++, style=mystyle, caption={Receiver node pseudo-code.}, label={receiver-skeleton}]{receiver-skeleton}
 struct receiverStage: ff_node_t<Task> {
@@ -46,7 +46,7 @@ struct receiverStage: ff_node_t<Task> {
 }
 \end{lstlisting}
 
-\subsubsection{Sender node}
+\subsection{Sender node}
 Sender node, on the other hand, relies over Margo instance initialized with \texttt{MARGO\_CLIENT\_MODE}, since we do not expect this node to be listening on any RPC request for now.  The current version of the sender node allows to contact only a single endpoint at a given address. The address to contact for this specific node must be provided at initialization, and at the moment it is not possible to change the remote service address. In the next versions the possibility to contact multiple addresses, in order to implement the pathological grouping case described before, will be implemented following the same approach used for the receiver stage. Pseudo-code for this class is provided in \hr{sender-skeleton}{Listing}.
 
 \begin{lstlisting}[language=C++, style=mystyle, caption={Sender node pseudo-code.}, label={sender-skeleton}]{sender-skeleton}
@@ -83,7 +83,7 @@ struct senderStage: ff_node_t<Task> {
 };
 \end{lstlisting}
 
-\subsection{RPC based service}
+\section{RPC based service}
 The developed classes allow distributed groups to communicate through a fixed set of RPC calls, which are shared among receiver and sender nodes and used for all the communications between the various groups. Two RPCs are offered by the communication service, and they refer to:
 \begin{itemize}
     \item \texttt{ff\_rpc}: this RPC is used during the whole lifetime of the FastFlow application, and it is used by the sender node, upon reception of a stream element, to forward the current stream element to the receiver node it is connected to. The sender node packs the data in the RPC input type, as described in \textbf{\S\ref{sec:rpc-reg}}, and ships them issuing a forward call to the connected endpoint. Since no response is expected from the RPC call, the sender can proceed immediately.
@@ -92,7 +92,7 @@ The developed classes allow distributed groups to communicate through a fixed se
 
 It is important to point out that this set of RPC callbacks need to be registered only once per Margo instance. This means that, once for each listening endpoint, the receiver node must register the same set of RPCs, but it is completely agnostic on the number of nodes that will issue RPC requests on the same endpoint. 
 
-\subsection{Splitting taxonomy}
+\section{Splitting taxonomy}
 In this section we analyze the characteristics of different connections that take place between remotely connected groups, we show that very specific types can be determined whether the splitting happens in a \textit{horizontal} or \textit{vertical} fashion. We describe the specific categories depending on different splitting strategies. To better explain the identified categories, we introduce the concepts of \textit{level}, \textit{horizontal} and \textit{vertical} splits. Considering a generic FastFlow application as a pipeline of stages, we naturally associate a \textit{level} to each stage incrementally. In addition, we define as \textit{horizontal} a split which creates two groups sitting at the same level of the original pipeline, instead we define as \textit{vertical} a split which creates groups operating at two different levels of the pipeline. Note, however, that a \textit{vertical} split can internally contain further \textit{vertical} or \textit{horizontal} splits. Given these definitions, we can identify two categories that describe each of the connections in remotely-connected groups, specifically:
 \begin{itemize}
     \item \textit{internal}: elements to be sent/received are related to a connection that takes place between groups that are split horizontally. Connections of this type can be linked to splittings that divides an original FastFlow building block in two groups belonging to the same pipeline level, for example an \textit{all-to-all} building block divided by distributing left and right workers in two groups;

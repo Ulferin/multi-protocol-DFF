@@ -1,4 +1,4 @@
-\section{Margo}
+\chapter{Margo}
 \label{sec:margo}
 Margo \cite{mochi-core} is a Mercury binding that uses Argobots as a runtime library. Just like Mercury, Margo requires both origin and target nodes to register for RPC calls associated with a specific identifier (a string) and an input/output type, which must necessarily be registered using the relative macros, as we describe in the following.\newline
 By using Argobots as a runtime library, Margo hides the handling of Mercury's progress loop by delegating it to a specific Argobots ES (namely, a physical thread). Moreover, Margo allows to freely manage how the various RPC associated callbacks will be dispatched among internal pools and external user defined pools. When initializing Margo, the user can specify its own pools and ESs that will be responsible for both progress loop and RPC calls, otherwise the programmer can decide to completely let Margo handle the calls with its own pools and ESs.\newline
@@ -9,7 +9,7 @@ Being a binding between Mercury and Argobots, Margo retains all the concepts we 
     \item progress loop abstraction: polling and communication events are internally managed by a ULT. Policies for handling RPC-related execution can be manually defined and tweaked to better suit the application needs. In this way, multiple providers can be easily handled and multiplexed by the same core process, without the need of handling multiple progress loops at once;
     \item renewed polling strategy: Margo allows both busy and idle mode, which allows to tweak Margo for both performance and resource consumption needs.
 \end{itemize}
-\subsection{RPC registration process}
+\section{RPC registration process}
 \label{sec:rpc-reg}
 In this section we describe the RPC registration process, which follows a standardized procedure and requires RPC input and output types, as well as routines to pack the types into network buffers, to be defined by both origin and target nodes. Additionally, the callback function to be executed must be defined by the target node with a predefined signature in order for Margo to encapsulate it in the internal service functions which triggers RPC execution upon receiving the request from the origin node.\newline
 
@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
 \end{minipage}
 \end{center}
 
-\subsection{Margo analysis}
+\section{Margo analysis}
 As we pointed out in \S\ref{sec:mercury-analysis}, most of the limitations are tied to the support of the various plugins and their functionalities. Margo, besides sharing all these limitations, introduce an incredibly easy interface to implement multi-homed RPC services, which greatly simplifies the development of RPC-based FastFlow nodes.\newline
 
 The main limitation of the Margo library are mostly related to how RPC calls are handled, in particular with reference to data copies happening between the input data and the send/receive buffers used to ship RPC data through the network. However, further investigation is needed at this point in time to analyze how those limitations can be avoided, without relying on the bulk functionalities, which however remain a suitable fallback method if data copies are unavoidable. However, a further problem is introduced in the utilization of bulk transfers via RDMA where no responses are expected from the sender, in fact in this particular case one must be extremely careful about freeing memory that has still not been read from the remote end.\newline

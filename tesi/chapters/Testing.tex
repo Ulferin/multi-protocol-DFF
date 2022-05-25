@@ -1,8 +1,8 @@
-\section{Testing}
+\chapter{Testing}
 \label{sec:testing}
 In this section we show the testing application we have developed to assess the functionalities of the implemented classes described in \S\ref{sec:implementation}.
 
-\subsection{A sample application}
+\section{A sample application}
 In \hyperref[fig:sample-app]{\textbf{Figure \ref{fig:sample-app}}} we show a sample application developed to test the implemented classes for communication. As it can be seen, the structure of the application is very simple, we have three groups communicating in a pipeline fashion, by means of implemented \texttt{sender} and \texttt{receiver} nodes. Communication between groups can happen with the different plugins provided by the Mercury library, and switching from one plugin (transport) to another is only a matter of passing as configuration string the desired plugin (transport) to use for communication.\newline
 
 \hr{fig:node-legends}{Figure} shows the legend for the nodes and communication channels used in the sample application. We have two types of nodes, sequential ones which are standard \ttt{ff\_node\_t}, and Margo-injected nodes which are used for communication between distributed groups. Simple plain arrows indicates usual FastFlow shared memory channel, instead bullet-tailed arrows indicate a distributed connection between two nodes. Note, however, that ``distributed'' here only means that two groups are connected through Margo calls, but the nodes can reside in the same machine and communicate with the shared memory plugin provided by Margo, as it happened in part of the testing phase.
@@ -106,4 +106,4 @@ if (pipe.run_and_wait_end()<0) {
 
 With the implemented classes, building various groups communicating between each other is very simple and straightforward. Moreover, the way communications are abstracted by the underlying frameworks, makes it easy and painless to extend functionalities of the communication nodes. Adding new protocols requires zero effort and no code modifications from the user point-of-view, since the only step to follow is to define a Mercury-accepted string with the preferred protocol to use during communication and use it at initialization of the receiver node.\newline
 
-Note that, since the receiver stages can be initialized with a vector of strings which represents all the endpoints to which the receiver will listen on, we can (and we must, to allow correct termination) compose multiple instances of groups (G1) and (G2), based on the amount of endpoints created, respectively by (G2) and (G3). For example, if we create a group (G2) with two listening endpoints, in order to allow the whole application to terminate correctly, we must run two (G1) connecting, in turn, to both the endpoints.
+hNote that, since the receiver stages can be initialized with a vector of strings which represents all the endpoints to which the receiver will listen on, we can (and we must, to allow correct termination) compose multiple instances of groups (G1) and (G2), based on the amount of endpoints created, respectively by (G2) and (G3). For example, if we create a group (G2) with two listening endpoints, in order to allow the whole application to terminate correctly, we must run two (G1) connecting, in turn, to both the endpoints.
