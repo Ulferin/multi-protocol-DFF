@@ -340,6 +340,10 @@ public:
         for(size_t i=0; i < this->dest_endpoints.size(); i++){
             if ((sockets[i] = tryConnect(this->dest_endpoints[i])) <= 0 ) return -1;
             if (handshakeHandler(sockets[i], false) < 0) return -1;
+            //NOTE: this is an association that must happen in all the classes.
+            //      In TPC this is simply associated to the socket, in MPI it is
+            //      associated to the rank and in RPC it is associated to the
+            //      endpoint directly since we do not have an ID to use for forwards
             sock2End.insert({sockets[i], this->endRPC[i]});
         }
         return 0;

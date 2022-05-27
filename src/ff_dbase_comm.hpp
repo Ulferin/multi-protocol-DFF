@@ -228,6 +228,153 @@ protected:
 };
 
 
+class ff_dCommunicator {
+
+public:
+    virtual void initializeCommunicator() = 0;
+    virtual void listen() = 0;
+    virtual void forward() = 0;
+
+};
+
+class ff_dCommunicatorRPC: public ff_dCommunicator {
+
+protected:
+    void init_ABT() {
+        #ifdef INIT_CUSTOM
+        margo_set_environment(NULL);
+        ABT_init(0, NULL);
+        #endif
+        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
+            ABT_FALSE, &pool_e1);
+        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
+            ABT_SCHED_CONFIG_NULL, &xstream_e1);
+    }
+
+    void init_mid(const char* address, margo_instance_id* mid) {
+        na_init_info na_info = NA_INIT_INFO_INITIALIZER;
+        na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
+
+        hg_init_info info = {
+            .na_init_info = na_info
+        };
+
+        margo_init_info args = {
+            .json_config   = NULL,      /* const char*          */
+            .progress_pool = pool_e1,   /* ABT_pool             */
+            .rpc_pool      = pool_e1,   /* ABT_pool             */
+            .hg_class      = NULL,      /* hg_class_t*          */
+            .hg_context    = NULL,      /* hg_context_t*        */
+            .hg_init_info  = &info       /* struct hg_init_info* */
+        };
+
+        *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
+        assert(*mid != MARGO_INSTANCE_NULL);
+        // margo_set_log_level(*mid, MARGO_LOG_TRACE);
+
+        // Check if the listening address is the requested one
+        char addr_self_string[128];
+        get_self_addr(mid, addr_self_string);
+        fprintf(stderr, "# accepting RPCs on address \"%s\"\n",
+            addr_self_string);
+    }
+
+    void register_rpcs(margo_instance_id* mid) {
+        hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc);
+        // NOTE: we actually want a response in the non-blocking version
+        margo_registered_disable_response(*mid, id, HG_TRUE);
+        margo_register_data(*mid, id, this, NULL);
+
+        id = MARGO_REGISTER(*mid, "ff_rpc_shutdown",
+                void, void, ff_rpc_shutdown);
+        margo_registered_disable_response(*mid, id, HG_TRUE);
+        margo_register_data(*mid, id, this, NULL);
+    }
+
+public:
+    ff_dCommunicatorRPC(int busy = 0): busy(busy) {}
+
+    virtual void initializeCommunicator(std::vector<ff_endpoint_rpc*> &endRPC) {
+        init_ABT();
+        for (auto &&addr: endRPC)
+        {
+            margo_instance_id* mid = new margo_instance_id();
+            init_mid(addr->margo_addr.c_str(), mid);
+            register_rpcs(mid);
+            mids.push_back(mid);
+        }
+    }
+
+    virtual void listen() {
+        printf("In svc method\n");      
+        fd_set set, tmpset;
+        // intialize both sets (master, temp)
+        FD_ZERO(&set);
+        FD_ZERO(&tmpset);
+
+        // add the listen socket to the master set
+        FD_SET(this->listen_sck, &set);
+
+        // hold the greater descriptor
+        int fdmax = this->listen_sck; 
+
+        while(handshakes < input_channels){
+            // copy the master set to the temporary
+            tmpset = set;
+
+            switch(select(fdmax+1, &tmpset, NULL, NULL, NULL)){
+                case -1: error("Error on selecting socket\n"); return EOS;
+                case  0: continue;
+            }
+
+            // iterate over the file descriptor to see which one is active
+            int fixed_last = (this->last_receive_fd + 1) % (fdmax +1);
+            for(int i=0; i <= fdmax; i++){
+                int actualFD = (fixed_last + i) % (fdmax +1);
+	            if (FD_ISSET(actualFD, &tmpset)){
+                    if (actualFD == this->listen_sck) {
+                        int connfd = accept(this->listen_sck, (struct sockaddr*)NULL ,NULL);
+                        if (connfd == -1){
+                            error("Error accepting client\n");
+                        } else {
+                            FD_SET(connfd, &set);
+                            if(connfd > fdmax) fdmax = connfd;
+
+                            this->handshakeHandler(connfd);
+                            handshakes++;
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
+        std::vector<ABT_thread*> threads;
+        printf("Waiting now...\n");
+        for (auto &&mid : mids)
+        {
+            ABT_thread* aux = new ABT_thread();
+            ABT_thread_create(pool_e1, wait_fin, mid, NULL, aux);
+            threads.push_back(aux);
+        }
+
+        finalize_xstream_cb(xstream_e1);
+        ABT_pool_free(&pool_e1);
+        printf("Returning EOS\n");
+        return this->EOS;
+    }
+
+    friend void ff_rpc(hg_handle_t handle);
+    friend void ff_rpc_shutdown(hg_handle_t handle);
+
+protected:
+    int                             busy;
+
+    ABT_pool                        pool_e1;
+    ABT_xstream                     xstream_e1;
+    std::vector<margo_instance_id*> mids;
+    size_t                          handshakes = 0;
+};
+
 class ff_dreceiverBaseRPC: virtual public ff_dAreceiverBase {
 
 protected:
