@@ -169,7 +169,7 @@ public:
         init_ABT();
         for (auto &&addr: this->endRPC)
         {
-            margo_instance_id* mid = new margo_instance_id();
+            margo_instance_id* mid = new margo_instance_id(); // FIXME: is it really necessary to create a new oject?
             init_mid(addr->margo_addr.c_str(), mid);
             register_rpcs(mid);
             mids.push_back(mid);

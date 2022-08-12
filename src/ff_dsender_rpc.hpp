@@ -61,6 +61,9 @@ protected:
         hg_addr_t svr_addr;
 
         const char* proto = endp->protocol.c_str();
+        // FIXME: this call recovers the mid associated to this protocol, but
+        //          what if I skip the "sock2End" map and directly associate the
+        //          mid instance to the socket fd?
         margo_addr_lookup(*proto2Margo[proto], endp->margo_addr.c_str(), &svr_addr);
         assert(svr_addr);
 
@@ -373,6 +376,8 @@ public:
         }
         rpc_id = ff_erpc_id;
         int sck = dest2Socket[task->chid];
+        // FIXME: basically I want to remove this and skip the association sck->endp
+        //          and go directly sck->mid
         endp = sock2End[sck];
 
         forwardRequest(task, rpc_id, endp);
