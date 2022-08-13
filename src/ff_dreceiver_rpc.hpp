@@ -339,10 +339,10 @@ protected:
 
     virtual void registerEOS(bool internal) {
         if(!internal) {
-            if (++externalNEos == (input_channels-internalConnections))
+            if (++this->externalNEos == (this->input_channels-this->internalConnections))
                 for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
         } else {
-            if (++internalNEos == internalConnections)
+            if (++this->internalNEos == this->internalConnections)
                 ff_send_out_to(this->EOS, get_num_outchannels()-1);
         }
 
