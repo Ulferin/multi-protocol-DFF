@@ -1,12 +1,15 @@
 CXX = g++-10
 CXXFLAGS = -Wall -g -O0 -std=c++20 -fno-inline-functions
 
+INSTALL_PATH = /home/federico/install/lib
+INCLUDE_PATH = ${HOME}/install/include
+
 FF_ROOT = ${HOME}/includes/fastflow/
 CEREAL_ROOT = ${HOME}/includes/cereal-1.3.2/include/
 DEFINES = -DDFF_EXCLUDE_MPI -DMARGO_FF
 
-LDFLAGS = -L/usr/local/lib -Wl,-rpath,/usr/local/lib/ -I${FF_ROOT} -I$(CEREAL_ROOT)
-LDLIBS = -pthread -lrt -lmargo -labt -lmercury
+LDFLAGS = -L$(INSTALL_PATH) -Wl,-rpath,$(INSTALL_PATH) -I${FF_ROOT} -I$(CEREAL_ROOT) -I$(INCLUDE_PATH)
+LDLIBS = -pthread -lrt -lmargo -labt -lmercury -ljson-c
 DEBUG = 
 
 TARGETS = ff_g1.out ff_g2.out ff_g3.out margo_ff_test.out
