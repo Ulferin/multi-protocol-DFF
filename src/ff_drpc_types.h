@@ -119,6 +119,7 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
         }
         case HG_FREE:
         {
+            // TODO: check how to free memory here
             // delete struct_data->task;
             break;
         }

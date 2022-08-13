@@ -341,6 +341,7 @@ public:
 		
         sockets.resize(this->dest_endpoints.size());
         for(size_t i=0; i < this->dest_endpoints.size(); i++){
+            std::cout << "Trying to connect to: " << this->dest_endpoints[i].address << "\n";
             if ((sockets[i] = tryConnect(this->dest_endpoints[i])) <= 0 ) return -1;
             if (handshakeHandler(sockets[i], false) < 0) return -1;
             //NOTE: this is an association that must happen in all the classes.
@@ -391,6 +392,7 @@ public:
             ff_endpoint_rpc* endp;
             for(const auto& sck : sockets) {
                 endp = sock2End[sck];
+                std::cout << "Forwarding EOS external " << endp->margo_addr.c_str() << "\n";
                 forwardEOS(&E_O_S, rpc_id, endp);
             }
         }
@@ -539,6 +541,7 @@ public:
 
     void eosnotify(ssize_t id) {
         if (id == (ssize_t)(this->get_num_inchannels() - 1)){
+            std::cout << "Received EOS message from RBox!\n";
             message_t E_O_S(0,0);
             hg_id_t rpc_id;
             ff_endpoint_rpc* endp;
@@ -547,6 +550,7 @@ public:
             for(const auto& sck : internalSockets) {
                 rpc_id = ff_ishutdown_id;
                 endp = sock2End[sck];
+                std::cout << "Forwarding EOS internal " << endp->margo_addr.c_str() << "\n";
                 forwardEOS(&E_O_S, rpc_id, endp);
             }           
         }
