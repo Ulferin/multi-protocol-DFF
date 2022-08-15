@@ -1,8 +1,9 @@
 CXX = g++-10
 CXXFLAGS = -Wall -g -O0 -std=c++20 -fno-inline-functions
 
-INSTALL_PATH = /home/federico/install/lib
-INCLUDE_PATH = ${HOME}/install/include
+# IMPORTANT: change these according to the installation path of Margo-related libraries
+INSTALL_PATH = /usr/local/lib # /home/federico/install/lib
+INCLUDE_PATH = /usr/local/include # ${HOME}/install/include
 
 FF_ROOT = ${HOME}/includes/fastflow/
 CEREAL_ROOT = ${HOME}/includes/cereal-1.3.2/include/
@@ -20,13 +21,13 @@ FF_DEPS = ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp ff_drpc_types.h ff_margo_utils
 
 all: $(TARGETS)
 
-ff_g1.out: ff_g1.cpp $(DEPS)
+../examples/ff_g1.out: ../examples/ff_g1.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
 
-ff_g2.out: ff_g2.cpp $(DEPS)
+../examples/ff_g2.out: ../examples/ff_g2.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
 
-ff_g3.out: ff_g3.cpp $(DEPS)
+../examples/ff_g3.out: ../examles/ff_g3.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
 
 margo_ff_test.out: test_a2a_h3.cpp $(FF_DEPS)

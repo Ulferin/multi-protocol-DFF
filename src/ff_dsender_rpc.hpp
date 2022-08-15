@@ -348,6 +348,9 @@ public:
             //      In TPC this is simply associated to the socket, in MPI it is
             //      associated to the rank and in RPC it is associated to the
             //      endpoint directly since we do not have an ID to use for forwards
+            //NOTE: however this invariant must be respected at every initialization
+            //      that is, the list of endpoints and the list of sockets must be
+            //      sorted in the same way
             sock2End.insert({sockets[i], this->endRPC[i]});
         }
         return 0;
