@@ -1,29 +1,9 @@
-#ifndef FFDCOMM
-#define FFDCOMM
+#ifndef FFDCOMM_I
+#define FFDCOMM_I
 
-#include <iostream>
-#include <vector>
-
-#include <margo.h>
-#include <abt.h>
-
+#include "ff_dAreceiver.hpp"
 #include <ff/ff.hpp>
-
-#include "ff_drpc_types.h"
-#include "ff_margo_utils.hpp"
-
-/* This is a generic interface used to provide protocol-specific functionalities
-to remotely connected FastFlow's nodes. It must be extended in order to implement
-the barely necessary functions to receive and ship data in the network. */
-class ff_dCommunicator {
-
-public:
-    virtual void init(ff_monode_t<message_t>* data) = 0;
-    virtual void listen() = 0;
-    virtual void send() = 0;
-    virtual void finalize() = 0;
-
-};
+#include <ff/distributed/ff_network.hpp>
 
 class ff_dCommRPC: public ff_dCommunicator {
 
@@ -66,26 +46,26 @@ protected:
     }
 
 
-    void register_rpcs(margo_instance_id* mid, T* data) {
-        hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc);
+    void register_rpcs(margo_instance_id* mid, void* data) {
+        hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc_comm);
         // NOTE: we actually want a response in the non-blocking version
         //DESIGN: this should change when supporting also sender functionalities
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, data, NULL);
 
         id = MARGO_REGISTER(*mid, "ff_rpc_shutdown",
-                void, void, ff_rpc_shutdown);
+                void, void, ff_rpc_shutdown_comm);
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, data, NULL);
 
         if (internal) {
             hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc_internal",
-                    ff_rpc_in_t, void, ff_rpc_internal);
+                    ff_rpc_in_t, void, ff_rpc_internal_comm);
             margo_registered_disable_response(*mid, id, HG_TRUE);
             margo_register_data(*mid, id, data, NULL);
 
             id = MARGO_REGISTER(*mid, "ff_rpc_shutdown_internal",
-                    void, void, ff_rpc_shutdown_internal);
+                    void, void, ff_rpc_shutdown_internal_comm);
             margo_registered_disable_response(*mid, id, HG_TRUE);
             margo_register_data(*mid, id, data, NULL);
         }
@@ -124,6 +104,10 @@ public:
         ABT_pool_free(&pool_e1);
     }
 
+    virtual void send() {
+        return;
+    }
+
     virtual void finalize() {
         for (auto &&mid : mids)
             {
@@ -133,17 +117,17 @@ public:
 
 
 protected:
+    bool                            internal;
+    int                             busy;
     std::vector<ff_endpoint_rpc*>   endRPC;
     std::vector<margo_instance_id*> mids;
     ABT_pool                        pool_e1;
     ABT_xstream                     xstream_e1;
-    int                             busy;
-    bool                            internal;
 
 };
 
 
-void ff_rpc(hg_handle_t handle) {
+void ff_rpc_comm(hg_handle_t handle) {
     hg_return_t             hret;
     ff_rpc_in_t             in;
     const struct hg_info*   info;
@@ -173,10 +157,10 @@ void ff_rpc(hg_handle_t handle) {
 
     return;
 }
-DEFINE_MARGO_RPC_HANDLER(ff_rpc)
+DEFINE_MARGO_RPC_HANDLER(ff_rpc_comm)
 
 
-void ff_rpc_internal(hg_handle_t handle) {
+void ff_rpc_internal_comm(hg_handle_t handle) {
     hg_return_t             hret;
     ff_rpc_in_t             in;
     const struct hg_info*   info;
@@ -200,10 +184,10 @@ void ff_rpc_internal(hg_handle_t handle) {
 
     return;
 }
-DEFINE_MARGO_RPC_HANDLER(ff_rpc_internal)
+DEFINE_MARGO_RPC_HANDLER(ff_rpc_internal_comm)
 
 
-void ff_rpc_shutdown(hg_handle_t handle) {
+void ff_rpc_shutdown_comm(hg_handle_t handle) {
     std::cout << "Received an external shutdown!\n";
     const struct hg_info*   info;
     margo_instance_id       mid;
@@ -217,15 +201,14 @@ void ff_rpc_shutdown(hg_handle_t handle) {
         (ff_dAreceiver*)margo_registered_data(mid, info->id);
     
     receiver->registerEOS(false);
-
     margo_destroy(handle);
 
     return;
 }
-DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
+DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown_comm);
 
 
-void ff_rpc_shutdown_internal(hg_handle_t handle) {
+void ff_rpc_shutdown_internal_comm(hg_handle_t handle) {
     std::cout << "Received an internal shutdown!\n";
 
     const struct hg_info*   info;
@@ -244,7 +227,7 @@ void ff_rpc_shutdown_internal(hg_handle_t handle) {
 
     return;
 }
-DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal);
+DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal_comm);
 
 
 #endif //FFDCOMM

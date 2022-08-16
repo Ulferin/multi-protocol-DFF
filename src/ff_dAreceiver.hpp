@@ -1,3 +1,6 @@
+#ifndef FF_DARECEIVER
+#define FF_DARECEIVER
+
 #include <iostream>
 #include <vector>
 #include <map>
@@ -11,10 +14,25 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/polymorphic.hpp>
 
-#include "ff_dCommunicator.hpp"
 
 
 using namespace ff;
+
+//DESIGN: we actually want to put this somewhere else, probably inside the
+//      networking part of FastFlow's library
+
+/* This is a generic interface used to provide protocol-specific functionalities
+to remotely connected FastFlow's nodes. It must be extended in order to implement
+the barely necessary functions to receive and ship data in the network. */
+class ff_dCommunicator {
+
+public:
+    virtual void init(ff_monode_t<message_t>* data) = 0;
+    virtual void listen() = 0;
+    virtual void send() = 0;
+    virtual void finalize() = 0;
+
+};
 
 
 class ff_dAreceiver: public ff_monode_t<message_t> {
@@ -71,9 +89,10 @@ public:
     ff_dAreceiver(ff_dCommunicator* communicator, ff_endpoint handshakeAddr,
         size_t input_channels, std::map<int, int> routingTable = {{0,0}},
         int coreid = -1, int busy = 0):
-            handshakeAddr(handshakeAddr), input_channels(input_channels),
-            routingTable(routingTable), coreid(coreid),
-            communicator(communicator) {
+            communicator(communicator), handshakeAddr(handshakeAddr),
+            input_channels(input_channels),
+            routingTable(routingTable), coreid(coreid), busy(busy)
+            {
         //DESIGN: check if this call actually register the base class or the
         //      extended one. In the AreceiverH we are calling the base constructor
         //      to not repeat the init call.
@@ -269,3 +288,5 @@ protected:
     size_t internalNEos = 0, externalNEos = 0;
 
 };
+
+#endif
