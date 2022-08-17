@@ -39,7 +39,6 @@
 
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
-#include <ff/distributed/ff_drpc_types.h>
 #include <ff/distributed/ff_dgroups.hpp>
 #include <ff/distributed/ff_dutils.hpp>
 #include <cereal/cereal.hpp>
@@ -50,7 +49,8 @@
 #include <margo.h>
 #include <abt.h>
 
-// #include "my-rpc.h"
+#include "ff_drpc_types.h"
+#include "ff_margo_utils.hpp"
 
 using namespace ff;
 
@@ -58,10 +58,6 @@ class ff_dreceiverRPC: public ff_monode_t<message_t> {
 protected:
 
     void init_ABT() {
-        #ifdef INIT_CUSTOM
-        margo_set_environment(NULL);
-        ABT_init(0, NULL);
-        #endif
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
             ABT_FALSE, &pool_e1);
         ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
@@ -153,58 +149,12 @@ protected:
         ff_send_out_to(task, this->routingTable[task->chid]); // assume the routing table is consistent WARNING!!!
     }
 
-    void registerEOS(bool) {
+    virtual void registerEOS(bool) {
         if(++neos == input_channels)
             for (auto &&mid : mids)
             {
                 margo_finalize(*mid);
             }        
-    }
-
-    // For TCP-based connections
-    virtual int handleRequest(int sck){
-   		int sender;
-		int chid;
-        size_t sz;
-        struct iovec iov[3];
-        iov[0].iov_base = &sender;
-        iov[0].iov_len = sizeof(sender);
-        iov[1].iov_base = &chid;
-        iov[1].iov_len = sizeof(chid);
-        iov[2].iov_base = &sz;
-        iov[2].iov_len = sizeof(sz);
-
-        switch (readvn(sck, iov, 3)) {
-           case -1: error("Error reading from socket\n"); // fatal error
-           case  0: return -1; // connection close
-        }
-
-        // convert values to host byte order
-        sender = ntohl(sender);
-        chid   = ntohl(chid);
-        sz     = be64toh(sz);
-
-        if (sz > 0){
-            char* buff = new char [sz];
-			assert(buff);
-            if(readn(sck, buff, sz) < 0){
-                error("Error reading from socket\n");
-                delete [] buff;
-                return -1;
-            }
-			message_t* out = new message_t(buff, sz, true);
-			assert(out);
-			out->sender = sender;
-			out->chid   = chid;
-
-            this->forward(out, sck);
-            return 0;
-        }
-
-
-        registerEOS(sck);
-
-        return -1;
     }
 
 public:
@@ -219,7 +169,7 @@ public:
         init_ABT();
         for (auto &&addr: this->endRPC)
         {
-            margo_instance_id* mid = new margo_instance_id();
+            margo_instance_id* mid = new margo_instance_id(); // FIXME: is it really necessary to create a new oject?
             init_mid(addr->margo_addr.c_str(), mid);
             register_rpcs(mid);
             mids.push_back(mid);
@@ -321,11 +271,11 @@ public:
                         if (connfd == -1){
                             error("Error accepting client\n");
                         } else {
-                            FD_SET(connfd, &set);
                             if(connfd > fdmax) fdmax = connfd;
 
                             this->handshakeHandler(connfd);
                             handshakes++;
+                            close(connfd);
                         }
                         continue;
                     }
@@ -387,15 +337,13 @@ protected:
         margo_register_data(*mid, id, this, NULL);
     }
 
-    void registerEOS(bool internal) {
-        // NOTE: the internalConn variable can be saved once and for all at the end
-        //      of the handshake process. This will not change once we have received
-        //      all connection requests
+    virtual void registerEOS(bool internal) {
+        printf("Internal: %d -- in_ch: %ld / in_conn: %ld -- ext_eos: %ld / in_eos: %ld", internal, input_channels, internalConnections, externalNEos, internalNEos);
         if(!internal) {
-            if (++externalNEos == (input_channels-internalConnections))
+            if (++this->externalNEos == (this->input_channels-this->internalConnections))
                 for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
         } else {
-            if (++internalNEos == internalConnections)
+            if (++this->internalNEos == this->internalConnections)
                 ff_send_out_to(this->EOS, get_num_outchannels()-1);
         }
 
@@ -436,7 +384,6 @@ protected:
 
 
 public:
-    //FIXME: in sender you used ff_endpoint_rpc*, here you are using copy not pointer
     // Multi-endpoint extension
     ff_dreceiverRPCH(ff_endpoint handshakeAddr,
         std::vector<ff_endpoint_rpc*> endRPC, size_t input_channels,
@@ -455,65 +402,6 @@ public:
         {
             register_rpcs(mid);
         }
-    }
-
-    message_t* svc(message_t* task) {
-        fd_set set, tmpset;
-        // intialize both sets (master, temp)
-        FD_ZERO(&set);
-        FD_ZERO(&tmpset);
-
-        // add the listen socket to the master set
-        FD_SET(this->listen_sck, &set);
-
-        // hold the greater descriptor
-        int fdmax = this->listen_sck; 
-
-        // We only need to receive routing tables once per input channel
-        while(handshakes < input_channels){
-            // copy the master set to the temporary
-            tmpset = set;
-
-            switch(select(fdmax+1, &tmpset, NULL, NULL, NULL)){
-                case -1: error("Error on selecting socket\n"); return EOS;
-                case  0: continue;
-            }
-
-            // iterate over the file descriptor to see which one is active
-            int fixed_last = (this->last_receive_fd + 1) % (fdmax +1);
-            for(int i=0; i <= fdmax; i++){
-                int actualFD = (fixed_last + i) % (fdmax +1);
-	            if (FD_ISSET(actualFD, &tmpset)){
-                    if (actualFD == this->listen_sck) {
-                        int connfd = accept(this->listen_sck, (struct sockaddr*)NULL ,NULL);
-                        if (connfd == -1){
-                            error("Error accepting client\n");
-                        } else {
-                            if(connfd > fdmax) fdmax = connfd;
-
-                            this->handshakeHandler(connfd);
-                            handshakes++;
-                            close(connfd);
-                        }
-                        continue;
-                    }
-                }
-            }
-        }
-
-        std::vector<ABT_thread*> threads;
-
-        for (auto &&mid : mids)
-        {
-            ABT_thread* aux = new ABT_thread();
-            ABT_thread_create(pool_e1, wait_fin, mid, NULL, aux);
-            threads.push_back(aux);
-        }
-
-        finalize_xstream_cb(xstream_e1);
-        ABT_pool_free(&pool_e1);
-        return this->EOS;
-        
     }
 
     // Necessary to access internal fields in the RPC callbacks
@@ -542,10 +430,17 @@ void ff_rpc(hg_handle_t handle) {
 
     hret = margo_get_input(handle, &in);
     assert(hret == HG_SUCCESS);
+    
+    //NOTE: this may cause problem while using ucx
+    // hg_size_t size = 128;
+    // char addr_string[128];
+    // margo_addr_to_string(mid, addr_string, &size, info->addr);
+    // printf("Received from: %s\n", addr_string);
 
     ff_dreceiverRPC* receiver =
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
 
+    //TODO: change this into a call to forward
     receiver->ff_send_out_to(in.task, receiver->routingTable[in.task->chid]);
 
     margo_free_input(handle, &in);
@@ -573,6 +468,7 @@ void ff_rpc_internal(hg_handle_t handle) {
     ff_dreceiverRPCH* receiver =
         (ff_dreceiverRPCH*)margo_registered_data(mid, info->id);
 
+    //TODO: change this into a call to forward
     receiver->ff_send_out_to(in.task, receiver->get_num_outchannels()-1);
 
     margo_free_input(handle, &in);
@@ -584,6 +480,7 @@ DEFINE_MARGO_RPC_HANDLER(ff_rpc_internal)
 
 
 void ff_rpc_shutdown(hg_handle_t handle) {
+    std::cout << "Received an external shutdown!\n";
     const struct hg_info*   info;
     margo_instance_id       mid;
 
@@ -595,14 +492,7 @@ void ff_rpc_shutdown(hg_handle_t handle) {
     ff_dreceiverRPC* receiver =
         (ff_dreceiverRPC*)margo_registered_data(mid, info->id);
     
-    //NOTE: probably not the best-looking solution to handle this. Check about
-    //      virtual functions and how they can be used to handle polymorphism
-    ff_dreceiverRPCH* receiverH = dynamic_cast<ff_dreceiverRPCH*>(receiver);
-
-    if(receiverH)
-        receiverH->registerEOS(false);
-    else
-        receiver->registerEOS(false);
+    receiver->registerEOS(false);
 
     margo_destroy(handle);
 
@@ -612,6 +502,7 @@ DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
 
 
 void ff_rpc_shutdown_internal(hg_handle_t handle) {
+    std::cout << "Received an internal shutdown!\n";
 
     const struct hg_info*   info;
     margo_instance_id       mid;

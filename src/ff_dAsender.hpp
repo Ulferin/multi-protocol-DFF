@@ -32,7 +32,8 @@
 //      and receiver of FastFlow and use this instead.
 //TODO: controllare tutte le variabili aggiornate all'interno delle RPC perché
 //      potrei avere delle race condition
-
+#ifndef FF_DASENDER
+#define FF_DASENDER
 
 #include <iostream>
 #include <vector>
@@ -52,49 +53,22 @@
 
 using namespace ff;
 
+#ifndef FF_DCOMMS
+#define  FF_DCOMMS
+class ff_dCommunicatorS {
 
-class ff_dsenderRPC: public ff_minode_t<message_t> {
+public:
+    virtual void init() = 0;
+    virtual void send(message_t*, int, bool) = 0;
+    virtual void finalize() = 0;
+    virtual void set(std::vector<int>) = 0;
+
+};
+#endif
+
+
+class ff_dAsender: public ff_minode_t<message_t> {
 protected:    
-
-    hg_handle_t shipRPC(ff_endpoint_rpc* endp, hg_id_t& rpc_id) {
-        hg_handle_t h;
-        hg_addr_t svr_addr;
-
-        const char* proto = endp->protocol.c_str();
-        // FIXME: this call recovers the mid associated to this protocol, but
-        //          what if I skip the "sock2End" map and directly associate the
-        //          mid instance to the socket fd?
-        margo_addr_lookup(*proto2Margo[proto], endp->margo_addr.c_str(), &svr_addr);
-        assert(svr_addr);
-
-        margo_create(*proto2Margo[proto], svr_addr, rpc_id, &h);
-
-        return h;
-    }
-
-    void forwardRequest(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
-        this->rpc_sent++;
-        
-        ff_rpc_in_t in;
-        in.task = new message_t(task->data.getPtr(), task->data.getLen(), true);
-        in.task->chid = task->chid;
-        in.task->sender = task->sender;
-
-        hg_handle_t h = shipRPC(endp, rpc_id);
-        margo_forward(h, &in);
-        margo_destroy(h);
-        
-        delete in.task;
-    }
-
-    void forwardEOS(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
-        this->rpc_sent++;
-
-        hg_handle_t h = shipRPC(endp, rpc_id);
-        margo_forward(h, NULL);
-        margo_destroy(h);
-    }
-
     int receiveReachableDestinations(int sck, std::map<int,int>& m){
        
         size_t sz;
@@ -250,87 +224,24 @@ protected:
     }
 
 
-    void init_ABT() {
-        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_SPSC,
-            ABT_FALSE, &pool_e1);
-        ABT_xstream_create_basic(ABT_SCHED_DEFAULT, 1, &pool_e1,
-            ABT_SCHED_CONFIG_NULL, &xstream_e1);
-    }
-
-    void init_mid(char* proto, margo_instance_id* mid) {
-        na_init_info na_info = NA_INIT_INFO_INITIALIZER;
-        na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
-
-        hg_init_info info = {
-            .na_init_info = na_info
-        };
-
-        margo_init_info args = {
-            .json_config   = NULL,      /* const char*          */
-            .progress_pool = pool_e1,   /* ABT_pool             */
-            .rpc_pool      = pool_e1,   /* ABT_pool             */
-            .hg_class      = NULL,      /* hg_class_t*          */
-            .hg_context    = NULL,      /* hg_context_t*        */
-            .hg_init_info  = &info      /* struct hg_init_info* */
-        };
-
-        //NOTE: Server mode is necessary to make ucx work
-        *mid = margo_init_ext(proto, MARGO_SERVER_MODE, &args);
-        assert(*mid != MARGO_INSTANCE_NULL);
-        // margo_set_log_level(*mid, MARGO_LOG_TRACE);
-    }
-
-
-    void register_rpcs(margo_instance_id* mid) {
-        ff_erpc_id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, NULL);
-        // NOTE: we actually want a response in the non-blocking version
-        margo_registered_disable_response(*mid, ff_erpc_id, HG_TRUE);
-
-        ff_eshutdown_id = MARGO_REGISTER(*mid, "ff_rpc_shutdown",
-                void, void, NULL);
-        margo_registered_disable_response(*mid, ff_eshutdown_id, HG_TRUE);
-    }
-
-    void startup() {
-        init_ABT();
-        for (auto &&endp: endRPC)
-        {
-            // We don't care about the address used for this mid, we only need
-            // the same protocol used by the endpoint to contact
-            char* proto;
-            proto = strdup(endp->protocol.c_str());
-            
-            // We only create a new mid if there is still no margo instance
-            // using this protocol
-            if(proto2Margo.find(proto) == proto2Margo.end()) {
-                margo_instance_id* mid = new margo_instance_id();
-                init_mid(proto, mid);
-                register_rpcs(mid);
-                proto2Margo.insert({proto, mid});
-            }
-
-            free(proto);
-        }
-    }
-
 public:
-    ff_dsenderRPC(ff_endpoint dest_endpoint, std::vector<ff_endpoint_rpc*> endRPC = {},
+    ff_dAsender(ff_dCommunicatorS* communicator, ff_endpoint dest_endpoint,
         std::string gName = "", int coreid = -1, int busy = 1):
-            gName(gName), coreid(coreid),
-            endRPC(std::move(endRPC)), busy(busy) {
-        
+            communicator(communicator),
+            gName(gName), coreid(coreid), busy(busy) {
         this->dest_endpoints.push_back(std::move(dest_endpoint));
-        startup();
+
+        this->communicator->init();
     }
 
 
-    ff_dsenderRPC(std::vector<ff_endpoint> dest_endpoints_,
-        std::vector<ff_endpoint_rpc*> endRPC = {},
+    ff_dAsender(ff_dCommunicatorS* communicator, std::vector<ff_endpoint> dest_endpoints_,
         std::string gName = "", int coreid=-1, int busy = 1):
+            communicator(communicator),
             dest_endpoints(std::move(dest_endpoints_)), gName(gName),
-            coreid(coreid), endRPC(std::move(endRPC)), busy(busy) {
+            coreid(coreid), busy(busy) {
         
-        startup();
+        this->communicator->init();
     }
 
 
@@ -351,8 +262,8 @@ public:
             //NOTE: however this invariant must be respected at every initialization
             //      that is, the list of endpoints and the list of sockets must be
             //      sorted in the same way
-            sock2End.insert({sockets[i], this->endRPC[i]});
         }
+        communicator->set(sockets);
         return 0;
     }
 
@@ -361,51 +272,34 @@ public:
         for(size_t i=0; i < this->sockets.size(); i++)
             close(sockets[i]);
 
-        for (auto &&mid : proto2Margo)
-        {
-            margo_finalize(*mid.second);
-        }
-        finalize_xstream_cb(xstream_e1);
-        ABT_pool_free(&pool_e1);
-
+        communicator->finalize();
     }
 
     message_t *svc(message_t* task) {
-        ff_endpoint_rpc* endp;
-        hg_id_t rpc_id;
-
         if (task->chid == -1){ // roundrobin over the destinations
             task->chid = next_rr_destination;
             next_rr_destination = (next_rr_destination + 1) % dest2Socket.size();
         }
-        rpc_id = ff_erpc_id;
-        int sck = dest2Socket[task->chid];
-        // FIXME: basically I want to remove this and skip the association sck->endp
-        //          and go directly sck->mid
-        endp = sock2End[sck];
 
-        forwardRequest(task, rpc_id, endp);
+        int sck = dest2Socket[task->chid];
+        communicator->send(task, sck, true);
+
         return this->GO_ON;
     }
 
     void eosnotify(ssize_t id) {
         if (++neos >= this->get_num_inchannels()) {
             message_t E_O_S(0,0);
-            hg_id_t rpc_id = ff_eshutdown_id;
-            ff_endpoint_rpc* endp;
             for(const auto& sck : sockets) {
-                endp = sock2End[sck];
-                std::cout << "Forwarding EOS external " << endp->margo_addr.c_str() << "\n";
-                forwardEOS(&E_O_S, rpc_id, endp);
+                communicator->send(&E_O_S, sck, true);
             }
         }
     }
 
-public:
-    int                                         rpc_sent = 0;
 protected:
 
     // From ff_dsender
+    ff_dCommunicatorS*                          communicator;
     size_t                                      neos=0;
     int                                         next_rr_destination = 0;
     std::vector<ff_endpoint>                    dest_endpoints;
@@ -413,35 +307,13 @@ protected:
     std::vector<int>                            sockets;
     std::string                                 gName;
     int                                         coreid;
-
-    // Extension for RPC based communication
-    std::vector<ff_endpoint_rpc*>               endRPC;
-    std::map<std::string, margo_instance_id*>   proto2Margo;
-    std::map<int, ff_endpoint_rpc*>             sock2End; 
-
-    hg_id_t                                     ff_erpc_id, ff_eshutdown_id;
-    ABT_pool                                    pool_e1;
-    ABT_xstream                                 xstream_e1;
     int                                         busy;
 };
 
 
-class ff_dsenderRPCH: public ff_dsenderRPC {
+class ff_dAsenderH: public ff_dAsender {
 
 protected:
-
-    // Extended to register internal communication RPCs
-    void register_rpcs(margo_instance_id* mid) {
-        ff_dsenderRPC::register_rpcs(mid);
-
-        ff_irpc_id = MARGO_REGISTER(*mid, "ff_rpc_internal",
-                ff_rpc_in_t, void, NULL);
-        margo_registered_disable_response(*mid, ff_irpc_id, HG_TRUE);
-
-        ff_ishutdown_id = MARGO_REGISTER(*mid, "ff_rpc_shutdown_internal",
-                void, void, NULL);
-        margo_registered_disable_response(*mid, ff_ishutdown_id, HG_TRUE);
-    }
 
     int handshakeHandler(const int sck, bool isInternal){
         if (sendGroupName(sck) < 0) return -1;
@@ -451,34 +323,18 @@ protected:
 
 
 public:
-    ff_dsenderRPCH(ff_endpoint e, std::vector<ff_endpoint_rpc*> endRPC = {},
+    ff_dAsenderH(ff_dCommunicatorS* communicator, ff_endpoint e,
         std::string gName = "", std::set<std::string> internalGroups = {},
         int coreid = -1, int busy = 1):
-            ff_dsenderRPC(e, endRPC, gName, coreid, busy),
-            internalGroups(std::move(internalGroups)) {
-        
-        // After having initialized the mid instances in the base constructor
-        // depending on the different protocols, we register for the same mid
-        // the set of RPCs needed for internal communications
-        for (auto &el: proto2Margo)
-        {
-            register_rpcs(el.second);
-        }
-        
-    }
+            ff_dAsender(communicator, e, gName, coreid, busy),
+            internalGroups(std::move(internalGroups)) {}
     
-    ff_dsenderRPCH(std::vector<ff_endpoint> dest_endpoints_,
-        std::vector<ff_endpoint_rpc*> endRPC = {},
+    ff_dAsenderH(ff_dCommunicatorS* communicator,
+        std::vector<ff_endpoint> dest_endpoints_,
         std::string gName = "", std::set<std::string> internalGroups = {},
         int coreid=-1, int busy = 1):
-            ff_dsenderRPC(dest_endpoints_, endRPC, gName, coreid, busy),
-            internalGroups(std::move(internalGroups)) {
-        
-        for (auto &el: proto2Margo)
-        {
-            register_rpcs(el.second);
-        }
-    }
+            ff_dAsender(communicator, dest_endpoints_, gName, coreid, busy),
+            internalGroups(std::move(internalGroups)) {}
 
 
     int svc_init() {
@@ -486,6 +342,7 @@ public:
         if (coreid!=-1)
 			ff_mapThreadToCpu(coreid);
 
+        std::vector<int> socks;
         for (size_t i = 0; i < this->dest_endpoints.size(); i++)
         {
             int sck = tryConnect(this->dest_endpoints[i]);
@@ -502,17 +359,16 @@ public:
             //      the saved handle can then be used in the communications
             //      involving this "socket" descriptor
             handshakeHandler(sck, isInternal);
-            sock2End.insert({sck, endRPC[i]});
+            socks.push_back(sck);
         }
+        // std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+        communicator->set(socks);
 
         rr_iterator = internalDest2Socket.cbegin();
         return 0;
     }
 
     message_t *svc(message_t* task) {
-        ff_endpoint_rpc* endp;
-        hg_id_t rpc_id;
-        
         // Conditionally retrieve endpoint information and RPC id based on
         // internal/external chid.
         if (this->get_channel_id() == (ssize_t)(this->get_num_inchannels() - 1)){
@@ -522,15 +378,12 @@ public:
                 if (++rr_iterator == internalDest2Socket.cend()) rr_iterator = internalDest2Socket.cbegin();
             }
 
-            rpc_id = ff_irpc_id;
             int sck = internalDest2Socket[task->chid];
-            endp = sock2End[sck];
-
-            forwardRequest(task, rpc_id, endp);
+            communicator->send(task, sck, false);
             return this->GO_ON;
         }
 
-        ff_dsenderRPC::svc(task);
+        ff_dAsender::svc(task);
         return this->GO_ON;
     }
 
@@ -539,25 +392,19 @@ public:
             close(internalSockets[i]);
         }
 
-        ff_dsenderRPC::svc_end();
+        ff_dAsender::svc_end();
     }
 
     void eosnotify(ssize_t id) {
         if (id == (ssize_t)(this->get_num_inchannels() - 1)){
             std::cout << "Received EOS message from RBox!\n";
             message_t E_O_S(0,0);
-            hg_id_t rpc_id;
-            ff_endpoint_rpc* endp;
-
             // send the EOS to all the internal connections
             for(const auto& sck : internalSockets) {
-                rpc_id = ff_ishutdown_id;
-                endp = sock2End[sck];
-                std::cout << "Forwarding EOS internal " << endp->margo_addr.c_str() << "\n";
-                forwardEOS(&E_O_S, rpc_id, endp);
+                communicator->send(&E_O_S, sck, false);                
             }           
         }
-        ff_dsenderRPC::eosnotify(id);
+        ff_dAsender::eosnotify(id);
      }
 
 
@@ -567,5 +414,6 @@ protected:
     std::map<int, int>::const_iterator          rr_iterator;
     std::map<int, int>                          internalDest2Socket;
 
-    hg_id_t                                     ff_irpc_id, ff_ishutdown_id;
 };
+
+#endif

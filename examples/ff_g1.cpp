@@ -37,8 +37,8 @@
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>
 
-#include "my-rpc.h"
-#include "ff_comm.hpp"
+#include "../src/my-rpc.h"
+#include "../src/ff_comm.hpp"
 
 using namespace ff;
 

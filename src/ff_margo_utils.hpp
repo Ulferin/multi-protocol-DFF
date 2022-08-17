@@ -1,8 +1,10 @@
-#ifndef __MY_UTILS
-#define __MY_UTILS
+
+#ifndef FF_MARGO_UTILS
+#define FF_MARGO_UTILS
 
 #include <margo.h>
 #include <thread>
+
 
 // Utily function to retrieve address of listening endpoint using Margo interface
 void get_self_addr(margo_instance_id* mid, char* addr_str) {
@@ -40,4 +42,4 @@ static void finalize_xstream_cb(void* data) {
     ABT_xstream_free(&xstream);
 }
 
-#endif // __MY_UTILS
+#endif

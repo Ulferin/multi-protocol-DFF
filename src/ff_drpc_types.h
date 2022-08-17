@@ -1,22 +1,34 @@
-/**
- * @file my-rpc.h
- * @author Federico Finocchio
- * @brief Header file containing RPC calls declaration, RPC types and packing
- * routine definition.
- * @version 0.1
- * @date 2022-03-22
- * 
- * @copyright Copyright (c) 2022
- * 
- */
-
-
-#ifndef __DIST_RPC_TYPE
-#define __DIST_RPC_TYPE
+#ifndef FF_DRPC_TYPES
+#define FF_DRPC_TYPES
 
 #include <margo.h>
 
 #include <ff/distributed/ff_network.hpp>
+
+
+// Endpoint extension for RPC compatibility. It acts like an endpoint for the
+// distributed version and only adds the possibility to specify the plugin and
+// protocol to be used 
+struct ff_endpoint_rpc : public ff_endpoint {
+    // The protocol argument must be defined as a Mercury plugin+protocol string
+    ff_endpoint_rpc(std::string addr, int port=-1, std::string protocol="ofi+tcp"):
+                ff_endpoint::ff_endpoint(addr, port),
+                protocol(std::move(protocol)) {
+                    
+        std::stringstream sstm;
+        if(this->port < 0)
+            //FIXME: this is only a temporary thing
+            sstm << this->protocol << this->address;
+        else
+            sstm << this->protocol << "://" << this->address << ":" << (this->port);
+        margo_addr = sstm.str();
+    }
+
+    std::string protocol;
+    std::string margo_addr;
+};
+
+
 
 /* --- MARGO RPCs declaration */
 
@@ -34,6 +46,26 @@ DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
 
 void ff_rpc_shutdown_internal(hg_handle_t handle);
 DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal);
+
+/* --- MARGO RPCs declaration --- */
+
+
+/* --- MARGO RPCs declaration */
+
+// RPC function used to send stream elements between external groups
+void ff_rpc(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc_comm);
+
+// RPC function used to send stream elements between internal groups
+void ff_rpc_internal(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc_internal_comm);
+
+// RPC function used to signal EOS to remote groups
+void ff_rpc_shutdown(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_comm);
+
+void ff_rpc_shutdown_internal(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal_comm);
 
 /* --- MARGO RPCs declaration --- */
 
@@ -86,7 +118,7 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
             if(ret != HG_SUCCESS)
                 break;
 
-            ret = hg_proc_int32_t(proc, &struct_data->task->sender);
+            ret = hg_proc_int32_t(proc, &task->sender);
             if(ret != HG_SUCCESS)
                 break;
 
@@ -107,7 +139,8 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
         }
         case HG_FREE:
         {
-            delete struct_data->task;
+            // TODO: check how to free memory here
+            // delete struct_data->task;
             break;
         }
     }
@@ -117,4 +150,4 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
 
 /* --- RPC types and packing routines --- */
 
-#endif /* __MY_RPC */
+#endif /* FF_DRPC_TYPES */
