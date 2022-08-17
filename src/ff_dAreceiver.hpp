@@ -24,6 +24,8 @@ using namespace ff;
 /* This is a generic interface used to provide protocol-specific functionalities
 to remotely connected FastFlow's nodes. It must be extended in order to implement
 the barely necessary functions to receive and ship data in the network. */
+#ifndef FF_DCOMM
+#define  FF_DCOMM
 class ff_dCommunicator {
 
 public:
@@ -33,6 +35,7 @@ public:
     virtual void finalize() = 0;
 
 };
+#endif
 
 
 class ff_dAreceiver: public ff_monode_t<message_t> {

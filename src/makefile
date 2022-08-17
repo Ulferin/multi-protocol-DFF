@@ -15,7 +15,7 @@ DEBUG =
 
 TARGETS = ff_g1.out ff_g2.out ff_g3.out margo_ff_test.out
 DEPS = my-rpc.h ff_comm.hpp ff_margo_utils.hpp
-FF_DEPS = ff_dAreceiver.hpp ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp ff_drpc_types.h ff_margo_utils.hpp
+FF_DEPS = ff_dAreceiver.hpp ff_dAsender.hpp ff_dCommunicator.hpp ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp ff_drpc_types.h ff_margo_utils.hpp
 
 .PHONY = all clean cleanall
 

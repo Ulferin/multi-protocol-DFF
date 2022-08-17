@@ -45,6 +45,7 @@
 #include "ff_dsender_rpc.hpp"
 #include "ff_dreceiver_rpc.hpp"
 #include "ff_dAreceiver.hpp"
+#include "ff_dAsender.hpp"
 #include "ff_dCommunicator.hpp"
 
 using namespace ff;
@@ -241,7 +242,8 @@ int main(int argc, char*argv[]){
     if (atoi(argv[1]) == 0){
         // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));
         gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
-        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
+        // gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
+        gFarm.add_collector(new ff_dAsender(new ff_dCommRPCS(false, 1, {&G0toG1_rpc, &G0toG2_rpc}), {g1, g2}, "G0", -1, 1));
 
         gFarm.run_and_wait_end();
         ABT_finalize();
