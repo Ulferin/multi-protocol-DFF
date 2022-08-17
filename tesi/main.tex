@@ -1,0 +1,189 @@
+% \documentclass[12pt, letterpaper]{article}  % change to >11 pt if you like, and change article with report
+
+
+\RequirePackage{fix-cm}
+\documentclass[12pt, oneside]{report}
+\usepackage[fontsize=12pt]{scrextend}
+\usepackage[utf8]{inputenc}
+\usepackage[letterpaper]{geometry}
+
+\newenvironment{asbtract}{}{}
+\usepackage{abstract}
+\usepackage{listings} %to insert code listings
+\usepackage[table,x11names]{xcolor}
+\usepackage{stackengine}
+% \newlength\llength
+% \llength=1.38ex\relax
+
+\usepackage{textcomp} % to write angular brackets with \textlangle
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{columns=flexible}
+
+% To define figures, listings, tables, etc with section counting
+\usepackage{chngcntr}
+\counterwithin{figure}{section}
+\AtBeginDocument{\counterwithin{lstlisting}{section}}
+
+\usepackage{titling}
+\usepackage[backend=biber, sorting=none]{biblatex}
+\usepackage{changepage}
+\usepackage{lastpage} %info sul # dell'ultima pagina del documento
+\usepackage{fancyhdr} %per modificare dimensioni,margini, intestazioni e righe a piè di pagina
+
+
+\usepackage{tabularx} % to build flexible tables
+\usepackage{array}
+\usepackage{array,booktabs}% http://ctan.org/pkg/{array,booktabs}
+
+\usepackage{makecell, caption, chngcntr} %
+\usepackage{subcaption}
+
+\usepackage{graphicx}
+\graphicspath{/home/federico/Downloads/tesi}
+\usepackage{color}
+\usepackage{graphbox}
+\usepackage[colorlinks=true]{hyperref}
+
+\usepackage[]{todonotes}
+%\usepackage[disable]{todonotes}
+\newcommand{\td}[1]{\todo[inline]{#1}}
+
+\usepackage{siunitx} % used for scientific notation like 1e-10
+\sisetup{output-exponent-marker=\ensuremath{\mathrm{e}}}
+\usepackage{float}
+\usepackage{bm}
+\usepackage{layouts}
+\usepackage{lipsum}
+
+
+\newcommand{\hr}[2]{\hyperref[#1]{\textbf{#2 \ref{#1}}}}
+\newcommand{\ttt}[1]{\texttt{#1}}
+\newcommand{\subtitle}[1]{%
+  \posttitle{%
+    \par\end{center}
+    \begin{center}\large#1\end{center}
+    \vskip0.5em}%
+}
+\newcommand\setrow[1]{\gdef\rowmac{#1}#1\ignorespaces}
+\newcommand\clearrow{\global\let\rowmac\relax}
+\clearrow
+\newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
+
+\definecolor{Maroon}{cmyk}{0, 0.87, 0.68, 0.32}
+\usepackage[colorlinks=true]{hyperref}
+\hypersetup{
+    colorlinks=true,
+    citecolor=black,
+    filecolor=black,
+    linkcolor=black, % colore dei link interni
+    urlcolor=Maroon  % colore dei link interniesterni
+}
+
+
+\fancypagestyle{plain}{
+  % cancella tutti i campi di intestazione e piè di pagina
+  \fancyhf{}
+  
+  \cfoot{Page \thepage{} of \pageref{LastPage}} %es: pag: 4 di 10
+
+  %linea orizzontale alle posizioni top e bottom della pagina
+  \renewcommand{\headrulewidth}{0 pt}  
+  \renewcommand{\footrulewidth}{0 pt}
+}
+
+\pagestyle{plain} 
+\addbibresource{mybib.bib}
+
+\title{\vspace{-2cm}\textbf{A multi-protocol communication layer for FastFlow's distributed runtime}}
+% \subtitle{\textbf{An analysis}}
+\author{
+    \normalsize{\textbf{Federico Finocchio} - 516818}\\
+    \normalsize{MSCS: Data and Knowledge. \underline{f.finocchio@studenti.unipi.it}}\\\\
+}
+
+\makeatletter
+\renewenvironment{abstract}{%
+    \if@twocolumn
+      \section*{\abstractname}%
+    \else %% <- here I've removed \small
+      \begin{center}%
+        {\bfseries \normalsize\abstractname\vspace{\z@}}%  %% <- here I've added \Large
+      \end{center}%
+      \quotation
+    \fi}
+    {\if@twocolumn\else\endquotation\fi}
+\makeatother
+
+\setcounter{tocdepth}{1}
+
+\begin{document}
+\date{}
+\maketitle
+    
+\begin{abstract}
+\normalsize
+Handling the explosion in data production rates both for scientific and commercial applications require amount of storage and computational power which can't be handled in single machines, thus a shift to distributed computing is being recorded. This shift in programming environment requires new tools and frameworks, as well as new abstractions, to allow application developers to provide efficient applications which deal with real-time decisions in an accurate and actionable way.
+
+FastFlow framework provides a set of abstraction that targets both the application and RTS developer, allowing via structured parallel programming the development of efficient parallel applications via a compositional model based on LEGO-style building blocks. In this work we introduce a new abstraction at the communication layer, allowing to connect remote nodes via a multitude of transports in different parts of the FastFlow application, allowing heterogeneity in computing nodes.
+\end{abstract}
+\tableofcontents
+\newpage
+\chapter*{Introduction}
+\label{introduction}
+%todo aggiustare numbering delle reference. Exa-big viene messa 8 ma in realtà dovrebbe essere la prima visto che la uso in intro ora
+\addcontentsline{toc}{section}{\nameref{introduction}}
+In the past years we are experiencing an explosion in the quantities of produced data, coming from scientific simulations, experimental facilities, connected devices (IoT) and commercial applications. These huge amount of data challenge, the storage and computing capabilities of single machines as well the network being used to transfer data between multiple machines due to I/O bottleneck \cite{exa-big}. Moreover, the amount of computation needed to handle the necessary data for modern applications, like (near) real-time applications that generate near-continuous data, is much bigger than the one offered by current monolithic systems. Thus, as we witnessed the shift from sequential to parallel programming, we are now observing a new shift from parallel to distributed computing. Moreover, as the difference between Big Data and High Performance Computing becomes more and more blurred, and due to this new evolution in the way application are developed and deployed, new frameworks, programming models and tools have surfaced to help the programmer to deal with the complexity of designing parallel applications above the underlying distributed infrastructures \cite{exa-big, survey-distributed}. In the transition to distributed computing, new extensive parallel processing and new analytics algorithms are needed in order to provide timely and actionable information \cite{big-data-movingforward}. However, dealing with scalable and parallel applications that can be deployed across the network is not an easy task, and abstractions are needed in order to allow the application developers to focus on the optimization of the uppermost layer, leaving, among all, communication and synchronization details to experts on the respective fields.
+
+The shift towards distributed computing introduces new challenges, like resource management, data distribution, coordination of participating processes and monitoring of the application. Given that each of these challenges acts at a different abstraction layer, application developers often prefer to rely over high-abstraction frameworks to abstract from the distributed challenges and focus only on the application development.\newline
+
+The thesis aims at extending the existing distributed-memory runtime system for FastFlow, a C++ structured parallel programming library originally targeting shared-memory platforms. The thesis introduces a novel communication layer, which offers a standardized API in order to abstract from the underlying transport used for communications between remote nodes. The provided abstraction allows the \textit{application programmer} to design new applications, as well as extending existing ones, by leveraging the classes introduced in this work in order to connect different nodes on the network without having to deal with communication specific implementation. The implemented layer provides an automatized way of plugging different protocols inside existing application without breaking the code and with little to zero effort. The \textit{RTS programmer} is provided with a set of extensible classes in order to allow the integration of existing transports or even future ones. Furthermore, in order to follow and maintain the LEGO style \textit{philosophy} of the FastFlow library, also the implemented communication layer is composed of a set of building blocks which can be composed in order to address the needs of the specific application. Allowing composability of components is very important in heterogeneous environments such as the cloud, in order to allow easy porting of applications and adaptation to environment changes. To fulfill this need, the communication layer presented in this thesis allows each application subset to communicate using the protocol that is most suited for the task at hand or for the architecture specific limitations. Vendor specific transports can represent a limitation in horizontally scaling applications, in particular if the provided transports are completely \textit{obscure} to the application programmer, which should not care of the underlying communication aspects when programming a distributed application. The implemented building blocks allow for this reason to be run above a multitude of different transports by simply plugging the protocol-specific building block.\newline
+%TODO quelli implementati da me non sono building blocks ma semplicemente dei nodi che verrano poi usati internamente in modo trasparente dall'utente. Quello che l'utente deve fare è semplicemente descrivere un json con tutte i protocolli che vuole usare ad un determinato step.
+A natural preliminary phase of this work was strictly tied to the analysis of communication frameworks which are available to the application programmer in order to leverage efficiently multiple protocols during communication between distributed groups. We aim at building a communication layer which is agnostic of the underlying protocol, thus, we first implemented the communication classes by means of a multi-protocol RPC framework in order to enable communication between nodes in a protocol-agnostic fashion. In the first part of this work we analysed the Margo \cite{mochi-core} library, it's underlying RPC framework called Mercury \cite{mochi-core, mercury} and the threading library which is used by Margo as a runtime framework, called Argobots \cite{argobots-paper}. The three analyzed frameworks are part of a much broad set of frameworks which are referred to as \textit{Mochi core}, as specified in \cite{mochi-core}.  The Mochi core provides a set of frameworks to enable communication, concurrency management and storage with a composition model. As appeared by the testing we performed, but as also described by its developers, the Mercury RPC framework is purposefully built to leverage HPC fabrics vendor protocols, sometimes resulting in a lack of support and faulty implementation for more classical transports like MPI and TCP. This led us to adapt the existing MPI and TCP drivers in the distributed FastFlow RTS into the novel API. 
+
+The thesis uses a bottom-up approach to illustrate the overall picture of the used frameworks and to describe internally each of those frameworks. The thesis is organized as follows:
+\begin{itemize}
+	\item \hr{chap:background}{Chapter}: illustrates the state-of-the-art regarding communication frameworks in the HPC and BDA environments;
+	\item \hr{chap:fastflow}{Chapter}: presents the FastFlow library and its current stage of development, illustrates the distributed runtime which is further extended by this work;
+    \item \hr{sec:mercury}{Chapter}: presents the core framework which provides the building blocks needed to implement RPC calls leveraging multiple transports. We describe the general structure of the framework, which will serve to describe the higher-level framework used to implement the communication layer in FastFlow's distributed runtime;
+    \item \hr{sec:argobots}{Chapter}: describes the runtime system which is used by the higher-level RPC framework in order to manage concurrent execution of different RPCs, to allow asynchronous execution of RPC-related callbacks and to simplify Mercury's progress loop;
+    \item \hr{sec:margo}{Chapter}: describes the high level framework used for the implementation of the multi-protocol interface for the communication layer in FastFlow's distributed runtime. We show how this framework leverages Mercury and Argobots functionalities to provide a parallel and efficient multi-protocol RPC framework;
+    \item \hr{sec:implementation}{Chapter}: gives insights on the integration of Margo's functionalities into the FastFlow's distributed communication layer. We show pseudo-code of the implemented classes and common use-cases for both the application and runtime programmer;
+    \item \hr{sec:testing}{Chapter}: focuses on the presentation of sample applications and testing we performed to evaluate the effectiveness of the implemented communication layer.
+\end{itemize}
+
+\input{chapters/Background}
+\input{chapters/FastFlow}
+\input{chapters/Mercury}
+\input{chapters/Argobots}
+\input{chapters/Margo}
+\input{chapters/Implementation}
+\input{chapters/Testing}
+\newpage
+
+\printbibliography
+\newpage
+% \input{chapters/appendix}
+% \listoftodos
+\end{document}

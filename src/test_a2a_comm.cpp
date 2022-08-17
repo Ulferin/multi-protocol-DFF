@@ -44,7 +44,9 @@
 
 #include "ff_dsender_rpc.hpp"
 #include "ff_dreceiver_rpc.hpp"
-// #include "ff_dbase_comm.hpp"
+#include "ff_dAreceiver.hpp"
+#include "ff_dAsender.hpp"
+#include "ff_dCommunicator.hpp"
 
 using namespace ff;
 std::mutex mtx;
@@ -171,7 +173,7 @@ int main(int argc, char*argv[]){
     // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
-#define REMOTE_TEST
+#define LOCAL_TEST
 
 #ifdef REMOTE_TEST
     /* --- TCP HANDSHAKE ENDPOINTS --- */
@@ -240,7 +242,8 @@ int main(int argc, char*argv[]){
     if (atoi(argv[1]) == 0){
         // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));
         gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
-        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
+        // gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
+        gFarm.add_collector(new ff_dAsender(new ff_dCommRPCS(false, 1, {&G0toG1_rpc, &G0toG2_rpc}), {g1, g2}, "G0", -1, 1));
 
         gFarm.run_and_wait_end();
         ABT_finalize();
@@ -249,7 +252,7 @@ int main(int argc, char*argv[]){
         // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}, {0,1}, {"G2"}));
         // gFarm.add_collector(new ff_dsenderH({g2,g3}, "G1", {"G2"}));
         // gFarm.add_emitter(new ff_dreceiverHRPC(g1, {&G0toG1_rpc, &G2toG1_rpc}, 2, {{0, 0}}, {0,1}, {"G2"}, -1, 1));
-        gFarm.add_emitter(new ff_dreceiverRPCH(g1, {&G0toG1_rpc, &G2toG1_rpc}, 2, {{0, 0}}, {0,1}, {"G2"}, -1, 1));
+        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommRPC(true, true, {&G0toG1_rpc, &G2toG1_rpc}), g1, 2, {{0, 0}}, {0,1}, {"G2"}, -1, 1));
         gFarm.add_collector(new ff_dsenderRPCH({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, -1, 1));
 
 		auto s = new Lnode(4,0);

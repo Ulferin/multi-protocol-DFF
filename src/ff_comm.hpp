@@ -37,7 +37,7 @@
 #include <abt.h>
 
 #include "my-rpc.h"
-#include "utils.hpp"
+#include "ff_margo_utils.hpp"
 
 using namespace ff;
 
@@ -147,8 +147,8 @@ private:
     hg_addr_t                   svr_addr;
     size_t                      otm;
 
-    std::vector<margo_request> reqs;
-    std::vector<hg_handle_t>   handles;
+    std::vector<margo_request>  reqs;
+    std::vector<hg_handle_t>    handles;
     size_t                      count = 0;
     size_t                      last_av = -1;
     size_t                      curr_it = 0;
