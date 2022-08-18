@@ -74,13 +74,20 @@ protected:
 
 
 public:
-    ff_dCommRPC(bool internal, bool busy, std::vector<ff_endpoint_rpc*> endRPC):
-        internal(internal), busy(busy), endRPC(std::move(endRPC)) {}
+    ff_dCommRPC(ff_endpoint handshakeAddr, bool internal, bool busy,
+        std::vector<ff_endpoint_rpc*> endRPC,
+        std::vector<int> internalDestinations = {0},
+        std::map<int, int> routingTable = {{0,0}},
+        std::set<std::string> internalGroupsNames = {}):
+        ff_dCommunicator(handshakeAddr, internal, internalDestinations,
+            routingTable, internalGroupsNames), busy(busy),
+        endRPC(std::move(endRPC)) {}
 
     //NOTE: probably init function can be inserted into the constructor call
     //      we don't need to defer the initialization in the svc_init of the
     //      FastFlow node
-    virtual void init(ff_monode_t<message_t>* data) {
+    virtual void init(ff_monode_t<message_t>* data, int input_channels) {
+        this->input_channels = input_channels;
         init_ABT();
         for (auto &&addr: this->endRPC)
         {
@@ -91,7 +98,10 @@ public:
         }
     }
 
-    virtual void listen() {
+    virtual int comm_listen() {
+        if(ff_dCommunicator::comm_listen() == -1)
+            return -1;
+
         std::vector<ABT_thread*> threads;
 
         for (auto &&mid : mids)
@@ -103,6 +113,8 @@ public:
 
         finalize_xstream_cb(xstream_e1);
         ABT_pool_free(&pool_e1);
+        
+        return 0;
     }
 
     virtual void send() {
@@ -110,15 +122,15 @@ public:
     }
 
     virtual void finalize() {
+        close(this->listen_sck);
         for (auto &&mid : mids)
-            {
-                margo_finalize(*mid);
-            }
+        {
+            margo_finalize(*mid);
+        }
     }
 
 
 protected:
-    bool                            internal;
     int                             busy;
     std::vector<ff_endpoint_rpc*>   endRPC;
     std::vector<margo_instance_id*> mids;
