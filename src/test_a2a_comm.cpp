@@ -39,6 +39,8 @@
 #include <iostream>
 #include <ff/dff.hpp>
 #include <ff/distributed/ff_dadapters.hpp>
+#include <ff/distributed/ff_dreceiver.hpp>
+#include <ff/distributed/ff_dsender.hpp>
 #include <mutex>
 #include <map>
 
@@ -131,7 +133,20 @@ struct Rnode : ff_minode_t<myTask_t>{
     }
 };
 
-struct Sink : ff_minode_t<myTask_t>{
+struct Forwarder : ff_node_t<myTask_t> {
+
+    myTask_t* svc(myTask_t* in) {
+		std::cout << in->str << std::endl;
+        return in;
+    }
+
+    void svc_end() {
+        printf("Terminating forwarder node.\n");
+    }
+
+};
+
+struct Sink : ff_node_t<myTask_t>{
     int count = 0;
     float sum = 0;
 
@@ -173,7 +188,7 @@ int main(int argc, char*argv[]){
     // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
-#define REMOTE_TEST
+#define LOCAL_TEST
 
 #ifdef REMOTE_TEST
     /* --- TCP HANDSHAKE ENDPOINTS --- */
@@ -198,7 +213,7 @@ int main(int argc, char*argv[]){
 
     ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 56000, "ofi+sockets");
     ff_endpoint_rpc G1toG2_rpc("188.217.65.36", 56001, "ofi+sockets");
-    ff_endpoint_rpc local_G1toG2_rpc("192.168.1.130", 56001, "ofi+sockets");
+    ff_endpoint_rpc local_G1toG2_rpc("192.168.1.7", 56001, "ofi+sockets");
 
     ff_endpoint_rpc G1toG3_rpc("38.242.220.197", 65002, "ofi+sockets");
     ff_endpoint_rpc G2toG3_rpc("38.242.220.197", 65003, "ofi+sockets");
@@ -216,6 +231,9 @@ int main(int argc, char*argv[]){
 
     ff_endpoint g3("127.0.0.1", 65004);
     g3.groupName = "G3";
+
+    ff_endpoint g4("127.0.0.1", 65006);
+    g3.groupName = "G4";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
 
@@ -242,8 +260,8 @@ int main(int argc, char*argv[]){
     if (atoi(argv[1]) == 0){
         // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));
         gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
-        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
-        // gFarm.add_collector(new ff_dAsender(new ff_dCommRPCS(false, 1, {&G0toG1_rpc, &G0toG2_rpc}), {g1, g2}, "G0", -1, 1));
+        // gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
+        gFarm.add_collector(new ff_dAsender(new ff_dCommRPCS(false, 1, {&G0toG1_rpc, &G0toG2_rpc}), {g1, g2}, "G0", -1, 1));
 
         gFarm.run_and_wait_end();
         ABT_finalize();
@@ -299,12 +317,23 @@ int main(int argc, char*argv[]){
 									new SquareBoxRight   // this box should be the last one!
 			                        }, true);		
         
-    } else {
+    } else if (atoi(argv[1]) == 3) {
         // gFarm.add_emitter(new ff_dreceiver(g3, 2));
         // gFarm.add_emitter(new ff_dreceiverBaseRPC(g3, {&G1toG3_rpc, &G2toG3_rpc}, 2, {std::make_pair(0, 0)}, -1, 1));
         gFarm.add_emitter(new ff_dAreceiver(
             new ff_dCommRPC(g3, false, true, {&G1toG3_rpc, &G2toG3_rpc}, {}, {std::make_pair(0, 0)}, {}),
             2, -1, 1));
+        gFarm.add_collector(new ff_dsender({g4}, "G3"));
+		gFarm.add_workers({new WrapperINOUT(new Forwarder(), 0, 1, true)});
+		
+		gFarm.run_and_wait_end();
+        ABT_finalize();
+		return 0;
+    } else {
+        gFarm.add_emitter(new ff_dAreceiver(
+            new ff_dCommTCP(g4, false),
+            1, -1, 1));
+        // gFarm.add_emitter(new ff_dreceiver(g4, 1));
         
 		gFarm.add_workers({new WrapperIN(new Sink(), 1, true)});
 		
@@ -312,6 +341,7 @@ int main(int argc, char*argv[]){
         ABT_finalize();
 		return 0;
     }
+
     gFarm.add_workers({&a2a});
     gFarm.run_and_wait_end();
     ABT_finalize();

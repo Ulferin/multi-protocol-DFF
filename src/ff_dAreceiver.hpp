@@ -26,8 +26,8 @@ to remotely connected FastFlow's nodes. It must be extended in order to implemen
 the barely necessary functions to receive and ship data in the network. */
 #ifndef FF_DCOMM
 #define  FF_DCOMM
-class ff_dCommunicator {
 
+class ff_dCommunicator {
 protected:
     static int sendRoutingTable(const int sck, const std::vector<int>& dest){
         dataBuffer buff; std::ostream oss(&buff);
@@ -114,10 +114,11 @@ protected:
     //DESIGN: insert into defined listen and then call the original listen + the implemented one
     //      like ff_dCommunicator::listen(); this->listen();
     int _listen() {
-        if (this->_init() == -1)
+        if (this->_init() == -1) {
+            error("Error initializing communicator\n");
             return -1;
+        }
 
-        fd_set set, tmpset;
         // intialize both sets (master, temp)
         FD_ZERO(&set);
         FD_ZERO(&tmpset);
@@ -126,7 +127,7 @@ protected:
         FD_SET(this->listen_sck, &set);
 
         // hold the greater descriptor
-        int fdmax = this->listen_sck; 
+        fdmax = this->listen_sck; 
 
         while(handshakes < input_channels){
             // copy the master set to the temporary
@@ -147,11 +148,12 @@ protected:
                         if (connfd == -1){
                             error("Error accepting client\n");
                         } else {
+                            FD_SET(connfd, &set);
                             if(connfd > fdmax) fdmax = connfd;
 
                             this->handshakeHandler(connfd);
                             handshakes++;
-                            close(connfd); //DESIGN: check this in TCP plugin
+                            // close(connfd); //DESIGN: check this in TCP plugin
                         }
                         continue;
                     }
@@ -203,6 +205,8 @@ protected:
     size_t                  handshakes = 0;
     size_t                  input_channels;
     int                     last_receive_fd = -1;
+    int                     fdmax;
+    fd_set                  set, tmpset;
 };
 #endif
 

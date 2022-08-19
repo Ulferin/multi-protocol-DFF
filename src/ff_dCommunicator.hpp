@@ -87,6 +87,7 @@ public:
     //      we don't need to defer the initialization in the svc_init of the
     //      FastFlow node
     virtual void init(ff_monode_t<message_t>* data, int input_channels) {
+        //DESIGN: rimuovere input channels da qui, abbiamo già messo nel costruttore
         this->input_channels = input_channels;
         init_ABT();
         for (auto &&addr: this->endRPC)
@@ -117,6 +118,7 @@ public:
         return 0;
     }
 
+    //DESIGN: probabilmente da rimuovere
     virtual void send() {
         return;
     }
@@ -138,6 +140,138 @@ protected:
     ABT_xstream                     xstream_e1;
 
 };
+
+
+//NOTE: this should be compatible with the original sender implemented in the
+//      FastFlow's distributed runtime. It implements the same communication
+//      protocol.
+class ff_dCommTCP: public ff_dCommunicator {
+
+protected:
+    virtual int handleRequest(int sck){
+   		int sender;
+		int chid;
+        size_t sz;
+        struct iovec iov[3];
+        iov[0].iov_base = &sender;
+        iov[0].iov_len = sizeof(sender);
+        iov[1].iov_base = &chid;
+        iov[1].iov_len = sizeof(chid);
+        iov[2].iov_base = &sz;
+        iov[2].iov_len = sizeof(sz);
+
+        switch (readvn(sck, iov, 3)) {
+           case -1: error("Error reading from socket\n"); // fatal error
+           case  0: return -1; // connection close
+        }
+
+        // convert values to host byte order
+        sender = ntohl(sender);
+        chid   = ntohl(chid);
+        sz     = be64toh(sz);
+
+        if (sz > 0){
+            char* buff = new char [sz];
+			assert(buff);
+            if(readn(sck, buff, sz) < 0){
+                error("Error reading from socket\n");
+                delete [] buff;
+                return -1;
+            }
+			message_t* out = new message_t(buff, sz, true);
+			assert(out);
+			out->sender = sender;
+			out->chid   = chid;
+
+            receiver->forward(out, isInternalConnection[sck]);
+            return 0;
+        }
+
+        neos++;
+        receiver->registerEOS(sck);
+
+        return -1;
+    }
+
+public:
+    ff_dCommTCP(ff_endpoint handshakeAddr, bool internal,
+        std::vector<int> internalDestinations = {0},
+        std::map<int, int> routingTable = {{0,0}},
+        std::set<std::string> internalGroupsNames = {}):
+        ff_dCommunicator(handshakeAddr, internal, internalDestinations,
+            routingTable, internalGroupsNames) {}
+
+
+    virtual void init(ff_monode_t<message_t>* data, int input_channels) {
+        receiver = (ff_dAreceiver*)data;
+        this->input_channels = input_channels;
+    }
+
+    virtual int comm_listen() {
+        if(ff_dCommunicator::comm_listen() == -1) {
+            error("Starting communication\n");
+            return -1;
+        }
+
+        while(neos < input_channels){
+            // copy the master set to the temporary
+            tmpset = set;
+
+            switch(select(fdmax+1, &tmpset, NULL, NULL, NULL)){
+                case -1: error("Error on selecting socket\n"); return -1;
+                case  0: continue;
+            }
+
+            // iterate over the file descriptor to see which one is active
+            int fixed_last = (this->last_receive_fd + 1) % (fdmax +1);
+            for(int i=0; i <= fdmax; i++){
+                int actualFD = (fixed_last + i) % (fdmax +1);
+	            if (FD_ISSET(actualFD, &tmpset)){
+                    // it is not a new connection, call receive and handle possible errors
+                    // save the last socket i
+                    this->last_receive_fd = actualFD;
+
+                    
+                    if (this->handleRequest(actualFD) < 0){
+                        close(actualFD); //DESIGN: capire perché questa close non rompe niente
+                        FD_CLR(actualFD, &set);
+
+                        // update the maximum file descriptor
+                        if (actualFD == fdmax)
+                            for(int ii=(fdmax-1);ii>=0;--ii)
+                                if (FD_ISSET(ii, &set)){
+                                    fdmax = ii;
+                                    this->last_receive_fd = -1;
+                                    break;
+                                }
+                                    
+                    }
+                   
+                }
+            }
+        }
+        
+        return 0;
+    }
+
+    //DESIGN: probabilmente da rimuovere
+    virtual void send() {
+        return;
+    }
+
+    virtual void finalize() {
+        close(this->listen_sck);
+        //DESIGN: probabilmente vanno chiusi anche tutti i socket usati per
+        //      comunicazione
+    }
+
+
+protected:
+    ff_dAreceiver*  receiver;
+    size_t          neos = 0;
+
+};
+
 
 
 class ff_dCommRPCS: public ff_dCommunicatorS {
