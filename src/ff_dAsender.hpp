@@ -57,18 +57,7 @@ using namespace ff;
 #define  FF_DCOMMS
 class ff_dCommunicatorS {
 
-public:
-    virtual void init() = 0;
-    virtual void send(message_t*, int, bool) = 0;
-    virtual void finalize() = 0;
-    virtual void set(std::vector<int>) = 0;
-
-};
-#endif
-
-
-class ff_dAsender: public ff_minode_t<message_t> {
-protected:    
+protected:
     int receiveReachableDestinations(int sck, std::map<int,int>& m){
        
         size_t sz;
@@ -107,6 +96,7 @@ protected:
         return 0;
     }
 
+
     int sendGroupName(const int sck){    
         size_t sz = htobe64(gName.size());
         struct iovec iov[2];
@@ -123,12 +113,14 @@ protected:
         return 0;
     }
 
-    virtual int handshakeHandler(const int sck, bool){
+
+    virtual int handshakeHandler(const int sck, bool isInternal){
         if (sendGroupName(sck) < 0) return -1;
 
-        return receiveReachableDestinations(sck, dest2Socket);
+        return receiveReachableDestinations(sck, isInternal ? internalDest2Socket : dest2Socket);
     }
-	
+
+
     int create_connect(const ff_endpoint& destination){
         int socketFD;
 
@@ -188,6 +180,7 @@ protected:
         return socketFD;
     }
 
+
     int tryConnect(const ff_endpoint &destination){
         int fd = -1, retries = 0;
 
@@ -199,6 +192,7 @@ protected:
 
         return fd;
     }
+
 
     int sendToSck(int sck, message_t* task){
         task->sender = htonl(task->sender);
@@ -223,128 +217,24 @@ protected:
         return 0;
     }
 
-
 public:
-    ff_dAsender(ff_dCommunicatorS* communicator, ff_endpoint dest_endpoint,
-        std::string gName = "", int coreid = -1, int busy = 1):
-            communicator(communicator),
-            gName(gName), coreid(coreid), busy(busy) {
-        this->dest_endpoints.push_back(std::move(dest_endpoint));
-
-        this->communicator->init();
-    }
-
-
-    ff_dAsender(ff_dCommunicatorS* communicator, std::vector<ff_endpoint> dest_endpoints_,
-        std::string gName = "", int coreid=-1, int busy = 1):
-            communicator(communicator),
-            dest_endpoints(std::move(dest_endpoints_)), gName(gName),
-            coreid(coreid), busy(busy) {
-        
-        this->communicator->init();
-    }
-
-
-    //NOTE: heritage from ff_dsender in order to perform handshake with receiver
-    int svc_init() {
-		if (coreid!=-1)
-			ff_mapThreadToCpu(coreid);
-		
-        sockets.resize(this->dest_endpoints.size());
-        for(size_t i=0; i < this->dest_endpoints.size(); i++){
-            std::cout << "Trying to connect to: " << this->dest_endpoints[i].address << "\n";
-            if ((sockets[i] = tryConnect(this->dest_endpoints[i])) <= 0 ) return -1;
-            if (handshakeHandler(sockets[i], false) < 0) return -1;
-            //NOTE: this is an association that must happen in all the classes.
-            //      In TPC this is simply associated to the socket, in MPI it is
-            //      associated to the rank and in RPC it is associated to the
-            //      endpoint directly since we do not have an ID to use for forwards
-            //NOTE: however this invariant must be respected at every initialization
-            //      that is, the list of endpoints and the list of sockets must be
-            //      sorted in the same way
-        }
-        communicator->set(sockets);
-        return 0;
-    }
-
-    void svc_end() {
-        // close the socket not matter if local or remote
+    virtual void init() = 0;
+    virtual void send(message_t*, bool) = 0;
+    virtual void finalize() {
         for(size_t i=0; i < this->sockets.size(); i++)
             close(sockets[i]);
 
-        communicator->finalize();
-    }
-
-    message_t *svc(message_t* task) {
-        if (task->chid == -1){ // roundrobin over the destinations
-            task->chid = next_rr_destination;
-            next_rr_destination = (next_rr_destination + 1) % dest2Socket.size();
-        }
-
-        int sck = dest2Socket[task->chid];
-        communicator->send(task, sck, true);
-
-        return this->GO_ON;
-    }
-
-    void eosnotify(ssize_t id) {
-        if (++neos >= this->get_num_inchannels()) {
-            message_t E_O_S(0,0);
-            for(const auto& sck : sockets) {
-                communicator->send(&E_O_S, sck, true);
-            }
+        for(size_t i=0; i<this->internalSockets.size(); i++) {
+            close(internalSockets[i]);
         }
     }
+    virtual void set(std::vector<int>) = 0;
 
-protected:
-
-    // From ff_dsender
-    ff_dCommunicatorS*                          communicator;
-    size_t                                      neos=0;
-    int                                         next_rr_destination = 0;
-    std::vector<ff_endpoint>                    dest_endpoints;
-    std::map<int, int>                          dest2Socket;
-    std::vector<int>                            sockets;
-    std::string                                 gName;
-    int                                         coreid;
-    int                                         busy;
-};
-
-
-class ff_dAsenderH: public ff_dAsender {
-
-protected:
-
-    int handshakeHandler(const int sck, bool isInternal){
-        if (sendGroupName(sck) < 0) return -1;
-
-        return receiveReachableDestinations(sck, isInternal ? internalDest2Socket : dest2Socket);
-    }
-
-
-public:
-    ff_dAsenderH(ff_dCommunicatorS* communicator, ff_endpoint e,
-        std::string gName = "", std::set<std::string> internalGroups = {},
-        int coreid = -1, int busy = 1):
-            ff_dAsender(communicator, e, gName, coreid, busy),
-            internalGroups(std::move(internalGroups)) {}
-    
-    ff_dAsenderH(ff_dCommunicatorS* communicator,
-        std::vector<ff_endpoint> dest_endpoints_,
-        std::string gName = "", std::set<std::string> internalGroups = {},
-        int coreid=-1, int busy = 1):
-            ff_dAsender(communicator, dest_endpoints_, gName, coreid, busy),
-            internalGroups(std::move(internalGroups)) {}
-
-
-    int svc_init() {
-       
-        if (coreid!=-1)
-			ff_mapThreadToCpu(coreid);
-
+    virtual int handshake() {
         std::vector<int> socks;
         for (size_t i = 0; i < this->dest_endpoints.size(); i++)
         {
+            std::cout << "Trying to connect to: " << this->dest_endpoints[i].address << "\n";
             int sck = tryConnect(this->dest_endpoints[i]);
             if (sck <= 0) {
                 error("Error on connecting!\n");
@@ -361,11 +251,73 @@ public:
             handshakeHandler(sck, isInternal);
             socks.push_back(sck);
         }
-        // std::this_thread::sleep_for(std::chrono::milliseconds(10000));
-        communicator->set(socks);
+        this->set(socks);
 
         rr_iterator = internalDest2Socket.cbegin();
         return 0;
+    }
+
+    virtual int getInternalCount() {
+        return this->internalDest2Socket.size();
+    }
+
+    virtual int getExternalCount() {
+        return this->dest2Socket.size();
+    }
+
+protected:
+    ff_dCommunicatorS(ff_endpoint dest_endpoint,
+        std::string gName = "", std::set<std::string> internalGroups = {}):
+            gName(gName), internalGroups(std::move(internalGroups)){
+        
+        this->dest_endpoints.push_back(std::move(dest_endpoint));
+    }
+
+
+    ff_dCommunicatorS(std::vector<ff_endpoint> dest_endpoints_,
+        std::string gName = "", std::set<std::string> internalGroups = {}):
+            dest_endpoints(std::move(dest_endpoints_)), gName(gName),
+            internalGroups(std::move(internalGroups)) {}
+
+
+    std::vector<ff_endpoint>                dest_endpoints;
+    std::string                             gName;
+    std::set<std::string>                   internalGroups;
+    std::vector<int>                        sockets;
+    std::map<int, int>                      dest2Socket;
+    std::vector<int>                        internalSockets;
+    std::map<int, int>::const_iterator      rr_iterator;
+    std::map<int, int>                      internalDest2Socket;
+};
+#endif
+
+
+class ff_dAsender: public ff_minode_t<message_t> {
+public:
+    ff_dAsender(ff_dCommunicatorS* communicator, int coreid = -1, int busy = 1):
+            communicator(communicator), coreid(coreid), busy(busy) {
+        
+        this->communicator->init();
+    }
+
+
+    int svc_init() {
+		if (coreid!=-1)
+			ff_mapThreadToCpu(coreid);
+		
+        if (communicator->handshake() == -1) {
+            error("Handhsake error.\n");
+            return -1;
+        }
+
+        this->externalDests = communicator->getExternalCount();
+        this->internalDests = communicator->getInternalCount();
+
+        return 0;
+    }
+
+    void svc_end() {
+        communicator->finalize();
     }
 
     message_t *svc(message_t* task) {
@@ -374,46 +326,49 @@ public:
         if (this->get_channel_id() == (ssize_t)(this->get_num_inchannels() - 1)){
             // pick destination from the list of internal connections!
             if (task->chid == -1){ // roundrobin over the destinations
-                task->chid = rr_iterator->first;
-                if (++rr_iterator == internalDest2Socket.cend()) rr_iterator = internalDest2Socket.cbegin();
+                task->chid = nextInternal;
+                nextInternal = (nextInternal + 1) % internalDests;
             }
 
-            int sck = internalDest2Socket[task->chid];
-            communicator->send(task, sck, false);
+            communicator->send(task, false);
             return this->GO_ON;
         }
 
-        ff_dAsender::svc(task);
+        if (task->chid == -1){ // roundrobin over the destinations
+            task->chid = nextExternal;
+            nextExternal = (nextExternal + 1) % externalDests;
+        }
+
+        communicator->send(task, true);
+
         return this->GO_ON;
     }
 
-    void svc_end() {
-        for(size_t i=0; i<this->internalSockets.size(); i++) {
-            close(internalSockets[i]);
-        }
-
-        ff_dAsender::svc_end();
-    }
-
     void eosnotify(ssize_t id) {
+
         if (id == (ssize_t)(this->get_num_inchannels() - 1)){
             std::cout << "Received EOS message from RBox!\n";
             message_t E_O_S(0,0);
             // send the EOS to all the internal connections
-            for(const auto& sck : internalSockets) {
-                communicator->send(&E_O_S, sck, false);                
-            }           
+            communicator->send(&E_O_S, false);                           
         }
-        ff_dAsender::eosnotify(id);
-     }
 
+        if (++neos >= this->get_num_inchannels()) {
+            message_t E_O_S(0,0);
+            communicator->send(&E_O_S, true);
+        }
+    }
 
 protected:
-    std::vector<int>                            internalSockets;
-    std::set<std::string>                       internalGroups;
-    std::map<int, int>::const_iterator          rr_iterator;
-    std::map<int, int>                          internalDest2Socket;
 
+    // From ff_dsender
+    ff_dCommunicatorS*          communicator;
+    size_t                      neos=0;
+    int                         nextExternal = 0, nextInternal = 0;
+    int                         coreid;
+    int                         busy;
+
+    int                         externalDests = 0, internalDests = 0;
 };
 
 #endif

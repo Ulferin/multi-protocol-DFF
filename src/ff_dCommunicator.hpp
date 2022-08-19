@@ -373,7 +373,17 @@ protected:
     }
 
 public:
-    ff_dCommRPCS(bool internal, bool busy, std::vector<ff_endpoint_rpc*> endRPC):
+    ff_dCommRPCS(ff_endpoint dest_endpoint, std::vector<ff_endpoint_rpc*> endRPC,
+        std::string gName = "", std::set<std::string> internalGroups = {},
+        bool internal = false, bool busy = true):
+        ff_dCommunicatorS(dest_endpoint, gName, internalGroups),
+        internal(internal), busy(busy), endRPC(std::move(endRPC)) {}
+
+    ff_dCommRPCS(std::vector<ff_endpoint> dest_endpoints_,
+        std::vector<ff_endpoint_rpc*> endRPC,
+        std::string gName = "", std::set<std::string> internalGroups = {},
+        bool internal = false, bool busy = true):
+        ff_dCommunicatorS(dest_endpoints_, gName, internalGroups),
         internal(internal), busy(busy), endRPC(std::move(endRPC)) {}
 
 
@@ -410,15 +420,32 @@ public:
         }
     }
 
-    virtual void send(message_t* task, int sck, bool ext) {
+    virtual void send(message_t* task, bool ext) {
         ff_endpoint_rpc* endp;
         hg_id_t rpc_id;
+
+        int sck = ext ? dest2Socket[task->chid] : internalDest2Socket[task->chid];
 
         rpc_id = ext ? ff_erpc_id : ff_irpc_id;
         //DESIGN: this is like this but might be changed, since we are assuming
         //      that only an EOS message can have zero length
-        if(task->data.getLen() == 0)
+        if(task->data.getLen() == 0) {
             rpc_id = ext ? ff_eshutdown_id : ff_ishutdown_id;
+
+            if(ext)
+                //FIXME: check if sockets here is meant like "only the external ones"
+                for(const auto& sck : sockets) {
+                    endp = sock2End[sck];
+                    forwardRequest(task, rpc_id, endp);             
+                } 
+            else
+                for(const auto& sck : internalSockets) {
+                    endp = sock2End[sck];
+                    forwardRequest(task, rpc_id, endp);             
+                }
+            
+            return;
+        }
         endp = sock2End[sck];
         std::cout << "Forwarding EOS external " << endp->margo_addr.c_str() << "\n";
 
@@ -426,6 +453,8 @@ public:
     }
 
     virtual void finalize() {
+        ff_dCommunicatorS::finalize();
+
         for (auto &&mid : proto2Margo)
         {
             margo_finalize(*mid.second);

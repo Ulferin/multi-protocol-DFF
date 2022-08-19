@@ -260,8 +260,8 @@ int main(int argc, char*argv[]){
     if (atoi(argv[1]) == 0){
         // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));
         gFarm.add_workers({new WrapperOUT(new Source(), 1, true)});
-        // gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
-        gFarm.add_collector(new ff_dAsender(new ff_dCommRPCS(false, 1, {&G0toG1_rpc, &G0toG2_rpc}), {g1, g2}, "G0", -1, 1));
+        gFarm.add_collector(new ff_dsenderRPC({g1, g2}, {&G0toG1_rpc, &G0toG2_rpc},"G0", -1, 1));
+        // gFarm.add_collector(new ff_dAsender(new ff_dCommRPCS(false, 1, {&G0toG1_rpc, &G0toG2_rpc}), {g1, g2}, "G0", -1, 1));
 
         gFarm.run_and_wait_end();
         ABT_finalize();
@@ -273,7 +273,9 @@ int main(int argc, char*argv[]){
         gFarm.add_emitter(new ff_dAreceiver(
             new ff_dCommRPC(g1, true, true, {&G0toG1_rpc, &G2toG1_rpc}, {0,1}, {{0, 0}}, {"G2"}),
             2, -1, 1));
-        gFarm.add_collector(new ff_dsenderRPCH({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, -1, 1));
+        // gFarm.add_collector(new ff_dsenderRPCH({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, -1, 1));
+        gFarm.add_collector(new ff_dAsender(
+                new ff_dCommRPCS({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, true, true), -1, 1));
 
 		auto s = new Lnode(4,0);
 		
