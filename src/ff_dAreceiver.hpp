@@ -26,20 +26,8 @@ to remotely connected FastFlow's nodes. It must be extended in order to implemen
 the barely necessary functions to receive and ship data in the network. */
 #ifndef FF_DCOMM
 #define  FF_DCOMM
+
 class ff_dCommunicator {
-
-public:
-    virtual void init(ff_monode_t<message_t>* data) = 0;
-    virtual void listen() = 0;
-    virtual void send() = 0;
-    virtual void finalize() = 0;
-
-};
-#endif
-
-
-class ff_dAreceiver: public ff_monode_t<message_t> {
-
 protected:
     static int sendRoutingTable(const int sck, const std::vector<int>& dest){
         dataBuffer buff; std::ostream oss(&buff);
@@ -77,6 +65,14 @@ protected:
         if (readn(sck, groupName, size) < 0){
             error("Error reading from socket groupName\n"); return -1;
         }
+
+        if(internal) {
+            bool internalGroup = internalGroupsNames.contains(std::string(groupName,size));
+            isInternalConnection[sck] = internalGroup; // save somewhere the fact that this sck represent an internal connection
+
+            if (internalGroup) return this->sendRoutingTable(sck, internalDestinations);
+        }
+
         std::vector<int> reachableDestinations;
         for(const auto& [key, value] : this->routingTable)
             reachableDestinations.push_back(key);
@@ -85,28 +81,7 @@ protected:
     }
 
 
-public:
-
-    //DESIGN: check communicator as pointer instead of as reference; moreover,
-    //      should we move the communicator with std::move?
-    ff_dAreceiver(ff_dCommunicator* communicator, ff_endpoint handshakeAddr,
-        size_t input_channels, std::map<int, int> routingTable = {{0,0}},
-        int coreid = -1, int busy = 0):
-            communicator(communicator), handshakeAddr(handshakeAddr),
-            input_channels(input_channels),
-            routingTable(routingTable), coreid(coreid), busy(busy)
-            {
-        //DESIGN: check if this call actually register the base class or the
-        //      extended one. In the AreceiverH we are calling the base constructor
-        //      to not repeat the init call.
-        this->communicator->init(this);
-    }
-
-
-    int svc_init() {
-  		if (coreid!=-1)
-			ff_mapThreadToCpu(coreid);
-
+    int _init() {
         if ((listen_sck=socket(AF_INET, SOCK_STREAM, 0)) < 0){
             error("Error creating the socket\n");
             return -1;
@@ -132,13 +107,18 @@ public:
             error("Error listening\n");
             return -1;
         }
-        
+
         return 0;
     }
 
+    //DESIGN: insert into defined listen and then call the original listen + the implemented one
+    //      like ff_dCommunicator::listen(); this->listen();
+    int _listen() {
+        if (this->_init() == -1) {
+            error("Error initializing communicator\n");
+            return -1;
+        }
 
-    message_t *svc(message_t* task) {        
-        fd_set set, tmpset;
         // intialize both sets (master, temp)
         FD_ZERO(&set);
         FD_ZERO(&tmpset);
@@ -147,14 +127,14 @@ public:
         FD_SET(this->listen_sck, &set);
 
         // hold the greater descriptor
-        int fdmax = this->listen_sck; 
+        fdmax = this->listen_sck; 
 
         while(handshakes < input_channels){
             // copy the master set to the temporary
             tmpset = set;
 
             switch(select(fdmax+1, &tmpset, NULL, NULL, NULL)){
-                case -1: error("Error on selecting socket\n"); return EOS;
+                case -1: error("Error on selecting socket\n"); return -1;
                 case  0: continue;
             }
 
@@ -168,11 +148,12 @@ public:
                         if (connfd == -1){
                             error("Error accepting client\n");
                         } else {
+                            FD_SET(connfd, &set);
                             if(connfd > fdmax) fdmax = connfd;
 
                             this->handshakeHandler(connfd);
                             handshakes++;
-                            close(connfd);
+                            // close(connfd); //DESIGN: check this in TCP plugin
                         }
                         continue;
                     }
@@ -180,115 +161,124 @@ public:
             }
         }
 
+        return 0;
+    }
+
+public:
+    virtual void init(ff_monode_t<message_t>*, int) = 0;
+    virtual int comm_listen() {
+        return this->_listen();
+    }
+    virtual void send() = 0;
+    virtual void finalize() = 0;
+    
+    int getChannelID(int chid) {
+        return this->routingTable[chid];
+    }
+
+    size_t getInternalConnections(){
+        return this->internalConnections;
+    }
+
+protected:
+    ff_dCommunicator(ff_endpoint handshakeAddr, bool internal,
+        std::vector<int> internalDestinations = {0},
+        std::map<int, int> routingTable = {{0,0}},
+        std::set<std::string> internalGroupsNames = {}):
+        handshakeAddr(handshakeAddr), internal(internal),
+        internalDestinations(internalDestinations),
+        routingTable(routingTable),
+        internalGroupsNames(internalGroupsNames)
+    {
+        internalConnections = this->internalGroupsNames.size();
+    }
+
+    ff_endpoint             handshakeAddr;
+    bool                    internal;
+    std::vector<int>        internalDestinations;
+    std::map<int, int>      routingTable;
+    std::set<std::string>   internalGroupsNames;
+    size_t                  internalConnections = 0;
+    std::map<int, bool>     isInternalConnection;
+
+    int                     listen_sck;
+    size_t                  handshakes = 0;
+    size_t                  input_channels;
+    int                     last_receive_fd = -1;
+    int                     fdmax;
+    fd_set                  set, tmpset;
+};
+#endif
+
+
+class ff_dAreceiver: public ff_monode_t<message_t> {
+
+
+public:
+
+    //DESIGN: check communicator as pointer instead of as reference; moreover,
+    //      should we move the communicator with std::move?
+    ff_dAreceiver(ff_dCommunicator* communicator,
+        size_t input_channels, int coreid = -1, int busy = 0):
+            communicator(communicator), input_channels(input_channels),
+            coreid(coreid), busy(busy)
+    {
+        //DESIGN: check if this call actually register the base class or the
+        //      extended one. In the AreceiverH we are calling the base constructor
+        //      to not repeat the init call.
+        this->communicator->init(this, input_channels);
+    }
+
+
+    int svc_init() {
+  		if (coreid!=-1)
+			ff_mapThreadToCpu(coreid);
+        
+        return 0;
+    }
+
+
+    message_t *svc(message_t* task) {        
         //NOTE: chiamata communicator specific, qui va controllato come gestire
         //      gli altri protocolli. Il communicator TCP potrebbe aver bisogno
         //      della lista dei socket connessi durante handshake.
-        communicator->listen();
+        if(communicator->comm_listen() == -1) {
+            error("Listening for messages\n");
+            return this->EOS;
+        }
         return this->EOS;
     }
-    
-    
-    void svc_end() {
-        close(this->listen_sck);
+
+
+    virtual void forward(message_t* task, bool internal){
+        if (internal) ff_send_out_to(task, this->get_num_outchannels()-1);
+        else ff_send_out_to(task, communicator->getChannelID(task->chid)); // assume the routing table is consistent WARNING!!!
     }
 
 
-    virtual void forward(message_t* task, bool){
-        ff_send_out_to(task, this->routingTable[task->chid]); // assume the routing table is consistent WARNING!!!
-    }
+    virtual void registerEOS(bool internal) {
 
+        printf("Internal: %d -- in_ch: %ld / in_conn: %ld -- ext_eos: %ld / in_eos: %ld\n", internal, input_channels, communicator->getInternalConnections(), externalNEos, internalNEos);
+        if(!internal) {
+            if (++this->externalNEos == (this->input_channels-communicator->getInternalConnections()))
+                for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
+        } else {
+            if (++this->internalNEos == communicator->getInternalConnections())
+                ff_send_out_to(this->EOS, get_num_outchannels()-1);
+        }
 
-    virtual void registerEOS(bool) {
         if(++neos == input_channels)
             communicator->finalize();   
     }
 
 protected:
-    ff_dCommunicator*               communicator;
-    ff_endpoint                     handshakeAddr;
-    size_t                          input_channels;
-    std::map<int, int>              routingTable;
-    int                             coreid;
-    int                             busy;
+    ff_dCommunicator*   communicator;
+    size_t              input_channels;
+    int                 coreid;
+    int                 busy;
 
-    size_t                          neos = 0;
-    int                             listen_sck;
-    int                             last_receive_fd = -1;
-    size_t                          handshakes = 0;
-
-};
-
-
-class ff_dAreceiverH: public ff_dAreceiver {
-
-protected:
-    virtual int handshakeHandler(const int sck) {
-        size_t size;
-        struct iovec iov; iov.iov_base = &size; iov.iov_len = sizeof(size);
-        switch (readvn(sck, &iov, 1)) {
-           case -1: error("Error reading from socket\n"); // fatal error
-           case  0: return -1; // connection close
-        }
-
-        size = be64toh(size);
-
-        char groupName[size];
-        if (readn(sck, groupName, size) < 0){
-            error("Error reading from socket groupName\n"); return -1;
-        }
-        
-        bool internalGroup = internalGroupsNames.contains(std::string(groupName,size));
-        isInternalConnection[sck] = internalGroup; // save somewhere the fact that this sck represent an internal connection
-
-        if (internalGroup) return this->sendRoutingTable(sck, internalDestinations);
-
-
-        std::vector<int> reachableDestinations;
-        for(const auto& [key, value] :  this->routingTable) reachableDestinations.push_back(key);
-        return this->sendRoutingTable(sck, reachableDestinations);
-    }
-
-
-public:
-    ff_dAreceiverH(ff_dCommunicator* communicator, ff_endpoint handshakeAddr,
-        size_t input_channels, std::map<int, int> routingTable = {{0,0}},
-        std::vector<int> internalDestinations = {0},
-        std::set<std::string> internalGroupsNames = {},
-        int coreid = -1, int busy = 0):
-            ff_dAreceiver(communicator, handshakeAddr, input_channels,
-                routingTable, coreid, busy),
-                internalDestinations(internalDestinations),
-                internalGroupsNames(internalGroupsNames) {
-        
-        internalConnections = this->internalGroupsNames.size();
-    }
-
-    void forward(message_t* task, bool internal){
-        if (internal) ff_send_out_to(task, this->get_num_outchannels()-1);
-        else ff_dAreceiver::forward(task, internal);
-    }
-
-    virtual void registerEOS(bool internal) {
-        printf("Internal: %d -- in_ch: %ld / in_conn: %ld -- ext_eos: %ld / in_eos: %ld", internal, input_channels, internalConnections, externalNEos, internalNEos);
-        if(!internal) {
-            if (++this->externalNEos == (this->input_channels-this->internalConnections))
-                for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
-        } else {
-            if (++this->internalNEos == this->internalConnections)
-                ff_send_out_to(this->EOS, get_num_outchannels()-1);
-        }
-
-        ff_dAreceiver::registerEOS(internal);
-            
-    }
-
-
-protected:
-    std::vector<int> internalDestinations;
-    std::map<int, bool> isInternalConnection;
-    size_t internalConnections = 0;
-    std::set<std::string> internalGroupsNames;
-    size_t internalNEos = 0, externalNEos = 0;
+    size_t              neos = 0;
+    size_t              internalNEos = 0, externalNEos = 0;
 
 };
 
