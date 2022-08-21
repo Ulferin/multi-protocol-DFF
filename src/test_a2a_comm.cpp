@@ -4,7 +4,7 @@
  *                        | -> Rnode2 -> |    
  *                        |              |
  *           |-> Lnode1 ->| -> Rnode2 -> |
- *  Source ->|            |              | ---> Sink
+ *  Source ->|            |              | --> Forwarder --> Sink
  *           |-> Lnode2 ->| -> Rnode2 -> |
  *                        |              |
  *                        | -> Rnode2 -> |
@@ -13,21 +13,21 @@
  *  distributed version:
  *
  *
- *     G1                        G2
- *   --------          -----------------------
- *  |        |        |           |-> Rnode1  |
- *  | Source | ---->  | Lnode1 -->|           | -->|     ------
- *  |        |  |     |           |-> Rnode2  |    |    |      |
- *   --------   |      -----------------------     |--> | Sink |
- *              |               |  ^               |    |      |
- *              |               |  |               |     ------
- *              |               v  |               |       G4   
- *              |      -----------------------     | 
- *               ---> |           |-> Rnode3  | -->|  
- *                    | Lnode2 -->|           |
- *                    |           |-> Rnode4  |
- *                     -----------------------
- *                               G3
+ *     G0                        G1
+ *   --------         -----------------------
+ *  |        |       |           |-> Rnode1  |
+ *  | Source | --->  | Lnode1 -->|           | -->|    -----------      ------
+ *  |        |  |    |           |-> Rnode2  |    |   |           |    |      |
+ *   --------   |     -----------------------     |-->| Forwarder |--> | Sink |
+ *              |              |  ^               |   |           |    |      |
+ *              |              |  |               |    -----------      ------
+ *              |              v  |               |         G3            G4
+ *              |     -----------------------     | 
+ *               --> |           |-> Rnode3  | -->|  
+ *                   | Lnode2 -->|           |
+ *                   |           |-> Rnode4  |
+ *                    -----------------------
+ *                              G2
  *
  *
  *  ** MANUAL ** implementation of the distributed groups!
@@ -188,7 +188,7 @@ int main(int argc, char*argv[]){
     // margo_set_global_log_level(MARGO_LOG_TRACE);
     ABT_init(0, NULL);
 
-#define LOCAL_TEST
+#define REMOTE_TEST
 
 #ifdef REMOTE_TEST
     /* --- TCP HANDSHAKE ENDPOINTS --- */
@@ -200,6 +200,9 @@ int main(int argc, char*argv[]){
 
     ff_endpoint g3("38.242.220.197", 65004);
     g3.groupName = "G3";
+
+    ff_endpoint g4("188.217.65.36", 56003);
+    g3.groupName = "G4";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
 
@@ -325,7 +328,8 @@ int main(int argc, char*argv[]){
         gFarm.add_emitter(new ff_dAreceiver(
             new ff_dCommRPC(g3, false, true, {&G1toG3_rpc, &G2toG3_rpc}, {}, {std::make_pair(0, 0)}, {}),
             2, -1, 1));
-        gFarm.add_collector(new ff_dsender({g4}, "G3"));
+        gFarm.add_collector(new ff_dAsender(new ff_dCommTCPS({g4}, "G3")));
+        // gFarm.add_collector(new ff_dsender({g4}, "G3"));
 		gFarm.add_workers({new WrapperINOUT(new Forwarder(), 0, 1, true)});
 		
 		gFarm.run_and_wait_end();

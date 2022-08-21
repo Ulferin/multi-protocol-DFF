@@ -409,7 +409,10 @@ public:
         }        
     }
 
-    virtual void set(std::vector<int> sockets) {
+    //DESIGN: controllare che questa non possa essere portata semplicemente come
+    //      estensione del metodo in cui è utilizzata. In particolare RPC Sender
+    //      chiama il metodo originale e poi aggiunge questa funzione alla fine
+    void set(std::vector<int> sockets) {
         //DESIGN: this is actually bad in a sense that the sockets vector and the
         //      endRPC one are strictly tied and they should be arranges in a
         //      consistent way. Each socket in ith position HAS to represent the
@@ -463,6 +466,13 @@ public:
         ABT_pool_free(&pool_e1);
     }
 
+    virtual int handshake() {
+        int ret = ff_dCommunicatorS::handshake();
+        this->set(socks); //DESIGN: fix socks being member 
+
+        return ret;
+    }
+
 public:
     // Extension for RPC based communication
     bool                                        internal;
@@ -477,6 +487,48 @@ public:
 
     hg_id_t                                     ff_erpc_id, ff_eshutdown_id;
     hg_id_t                                     ff_irpc_id, ff_ishutdown_id;
+};
+
+
+class ff_dCommTCPS: public ff_dCommunicatorS {
+
+public:
+    ff_dCommTCPS(ff_endpoint dest_endpoint, std::string gName = "",
+        std::set<std::string> internalGroups = {}):
+        ff_dCommunicatorS(dest_endpoint, gName, internalGroups) {}
+
+    ff_dCommTCPS(std::vector<ff_endpoint> dest_endpoints_,
+        std::string gName = "", std::set<std::string> internalGroups = {}):
+        ff_dCommunicatorS(dest_endpoints_, gName, internalGroups) {}
+
+    virtual void init() {
+        std::cout << "Init over\n";
+    }
+
+    virtual void send(message_t* task, bool external) {
+        int sck = external ? dest2Socket[task->chid] : internalDest2Socket[task->chid];
+
+        //DESIGN: this is like this but might be changed, since we are assuming
+        //      that only an EOS message can have zero length
+        if(task->data.getLen() == 0) {
+            printf("Sending EOS\n");
+            if(external)
+                //FIXME: check if sockets here is meant like "only the external ones"
+                for(const auto& sck : sockets) {
+                    sendToSck(sck, task);
+                } 
+            else
+                for(const auto& sck : internalSockets) {
+                    sendToSck(sck, task);
+                }
+            
+            return;
+        }
+        printf("Sending normal message\n");
+        sendToSck(sck, task);
+    }
+    
+
 };
 
 

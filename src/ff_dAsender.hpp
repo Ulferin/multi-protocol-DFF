@@ -219,7 +219,7 @@ protected:
 
 public:
     virtual void init() = 0;
-    virtual void send(message_t*, bool) = 0;
+    virtual void send(message_t* task, bool external) = 0;
     virtual void finalize() {
         for(size_t i=0; i < this->sockets.size(); i++)
             close(sockets[i]);
@@ -228,10 +228,8 @@ public:
             close(internalSockets[i]);
         }
     }
-    virtual void set(std::vector<int>) = 0;
 
     virtual int handshake() {
-        std::vector<int> socks;
         for (size_t i = 0; i < this->dest_endpoints.size(); i++)
         {
             std::cout << "Trying to connect to: " << this->dest_endpoints[i].address << "\n";
@@ -251,17 +249,14 @@ public:
             handshakeHandler(sck, isInternal);
             socks.push_back(sck);
         }
-        this->set(socks);
-
-        rr_iterator = internalDest2Socket.cbegin();
         return 0;
     }
 
-    virtual int getInternalCount() {
+    int getInternalCount() {
         return this->internalDest2Socket.size();
     }
 
-    virtual int getExternalCount() {
+    int getExternalCount() {
         return this->dest2Socket.size();
     }
 
@@ -286,8 +281,8 @@ protected:
     std::vector<int>                        sockets;
     std::map<int, int>                      dest2Socket;
     std::vector<int>                        internalSockets;
-    std::map<int, int>::const_iterator      rr_iterator;
     std::map<int, int>                      internalDest2Socket;
+    std::vector<int>                        socks;
 };
 #endif
 
@@ -305,6 +300,7 @@ public:
 		if (coreid!=-1)
 			ff_mapThreadToCpu(coreid);
 		
+        //DESIGN: only because we still do not separate init abt from main thread
         if (communicator->handshake() == -1) {
             error("Handhsake error.\n");
             return -1;
@@ -323,7 +319,10 @@ public:
     message_t *svc(message_t* task) {
         // Conditionally retrieve endpoint information and RPC id based on
         // internal/external chid.
-        if (this->get_channel_id() == (ssize_t)(this->get_num_inchannels() - 1)){
+        if (internalDests > 0
+            && (this->get_channel_id() == (ssize_t)(this->get_num_inchannels() - 1))){
+            
+            printf("I'm sending an internal message!\n");
             // pick destination from the list of internal connections!
             if (task->chid == -1){ // roundrobin over the destinations
                 task->chid = nextInternal;
@@ -340,6 +339,7 @@ public:
         }
 
         communicator->send(task, true);
+        // delete task;
 
         return this->GO_ON;
     }
