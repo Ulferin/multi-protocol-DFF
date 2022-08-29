@@ -1,10 +1,13 @@
-#ifndef FFDCOMM_I
-#define FFDCOMM_I
+#ifndef FF_DCOMM
+#define FF_DCOMM
 
 #include "ff_dAreceiver.hpp"
 #include "ff_dAsender.hpp"
+#include "ff_dCommI.hpp"
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
+
+
 
 class ff_dCommRPC: public ff_dCommunicator {
 
@@ -172,7 +175,7 @@ protected:
         }
 
         neos++;
-        receiver->registerEOS(sck);
+        receiver->registerEOS(isInternalConnection[sck]);
 
         return -1;
     }
@@ -248,7 +251,6 @@ protected:
     size_t          neos = 0;
 
 };
-
 
 
 class ff_dCommRPCS: public ff_dCommunicatorS {
