@@ -44,6 +44,7 @@
 #include <mpi.h>
 
 #include <ff/distributed/ff_drpc_types.h>
+//FIXME: change to new RPC classes
 #include "ff_dsender_rpc.hpp"
 #include "ff_dreceiver_rpc.hpp"
 

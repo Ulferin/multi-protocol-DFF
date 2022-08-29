@@ -5,6 +5,10 @@
 
 #include <ff/distributed/ff_network.hpp>
 
+//TODO: ff_endpoint_rpc in current state in only able to deal with
+//      plugin+protocol pairs that accept a "port" field. This is not the
+//      case, for example, for na+sm, which has problems in managing the
+//      "protocol" field.
 
 // Endpoint extension for RPC compatibility. It acts like an endpoint for the
 // distributed version and only adds the possibility to specify the plugin and
@@ -17,7 +21,6 @@ struct ff_endpoint_rpc : public ff_endpoint {
                     
         std::stringstream sstm;
         if(this->port < 0)
-            //FIXME: this is only a temporary thing
             sstm << this->protocol << this->address;
         else
             sstm << this->protocol << "://" << this->address << ":" << (this->port);
@@ -27,27 +30,6 @@ struct ff_endpoint_rpc : public ff_endpoint {
     std::string protocol;
     std::string margo_addr;
 };
-
-
-
-/* --- MARGO RPCs declaration */
-
-// RPC function used to send stream elements between external groups
-void ff_rpc(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc);
-
-// RPC function used to send stream elements between internal groups
-void ff_rpc_internal(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc_internal);
-
-// RPC function used to signal EOS to remote groups
-void ff_rpc_shutdown(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
-
-void ff_rpc_shutdown_internal(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal);
-
-/* --- MARGO RPCs declaration --- */
 
 
 /* --- MARGO RPCs declaration */

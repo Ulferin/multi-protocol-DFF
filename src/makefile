@@ -7,31 +7,18 @@ INCLUDE_PATH = /usr/local/include # ${HOME}/install/include
 
 FF_ROOT = ${HOME}/includes/fastflow/
 CEREAL_ROOT = ${HOME}/includes/cereal-1.3.2/include/
-DEFINES = -DDFF_EXCLUDE_MPI -DMARGO_FF
+DEFINES = -DDFF_EXCLUDE_MPI
 
 LDFLAGS = -L$(INSTALL_PATH) -Wl,-rpath,$(INSTALL_PATH) -I${FF_ROOT} -I$(CEREAL_ROOT) -I$(INCLUDE_PATH)
 LDLIBS = -pthread -lrt -lmargo -labt -lmercury -ljson-c
 DEBUG = 
 
-TARGETS = ff_g1.out ff_g2.out ff_g3.out margo_ff_test.out
-DEPS = my-rpc.h ff_comm.hpp ff_margo_utils.hpp
-FF_DEPS = ff_dAreceiver.hpp ff_dAsender.hpp ff_dCommunicator.hpp ff_dreceiver_rpc.hpp ff_dsender_rpc.hpp ff_drpc_types.h ff_margo_utils.hpp
+TARGETS = comm_test.out
+FF_DEPS = ff_dAreceiver.hpp ff_dAsender.hpp ff_dCommunicator.hpp ff_drpc_types.h ff_margo_utils.hpp ff_dCommI.hpp
 
 .PHONY = all clean cleanall
 
 all: $(TARGETS)
-
-../examples/ff_g1.out: ../examples/ff_g1.cpp $(DEPS)
-	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
-
-../examples/ff_g2.out: ../examples/ff_g2.cpp $(DEPS)
-	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
-
-../examples/ff_g3.out: ../examles/ff_g3.cpp $(DEPS)
-	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEBUG)
-
-margo_ff_test.out: test_a2a_h3.cpp $(FF_DEPS)
-	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)
 
 comm_test.out: test_a2a_comm.cpp $(FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)

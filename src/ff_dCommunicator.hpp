@@ -26,15 +26,11 @@ protected:
         };
 
         margo_init_info args = {
-            .json_config   = NULL,      /* const char*          */
             .progress_pool = pool_e1,   /* ABT_pool             */
             .rpc_pool      = pool_e1,   /* ABT_pool             */
-            .hg_class      = NULL,      /* hg_class_t*          */
-            .hg_context    = NULL,      /* hg_context_t*        */
             .hg_init_info  = &info       /* struct hg_init_info* */
         };
 
-        //DESIGN: this should be changed in case we want a "listening" communicator
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
         assert(*mid != MARGO_INSTANCE_NULL);
         // margo_set_log_level(*mid, MARGO_LOG_TRACE);
@@ -50,7 +46,6 @@ protected:
     void register_rpcs(margo_instance_id* mid, void* data) {
         hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc_comm);
         // NOTE: we actually want a response in the non-blocking version
-        //DESIGN: this should change when supporting also sender functionalities
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, data, NULL);
 
@@ -83,16 +78,13 @@ public:
             routingTable, internalGroupsNames), busy(busy),
         endRPC(std::move(endRPC)) {}
 
-    //NOTE: probably init function can be inserted into the constructor call
-    //      we don't need to defer the initialization in the svc_init of the
-    //      FastFlow node
     virtual void init(ff_monode_t<message_t>* data, int input_channels) {
-        //DESIGN: rimuovere input channels da qui, abbiamo già messo nel costruttore
+        //FIXME: rimuovere input channels da qui, abbiamo già messo nel costruttore
         this->input_channels = input_channels;
         init_ABT();
         for (auto &&addr: this->endRPC)
         {
-            margo_instance_id* mid = new margo_instance_id(); // FIXME: is it really necessary to create a new oject?
+            margo_instance_id* mid = new margo_instance_id();
             init_mid(addr->margo_addr.c_str(), mid);
             register_rpcs(mid, data);
             mids.push_back(mid);
@@ -118,11 +110,6 @@ public:
         return 0;
     }
 
-    //DESIGN: probabilmente da rimuovere
-    virtual void send() {
-        return;
-    }
-
     virtual void finalize() {
         close(this->listen_sck);
         for (auto &&mid : mids)
@@ -142,9 +129,6 @@ protected:
 };
 
 
-//NOTE: this should be compatible with the original sender implemented in the
-//      FastFlow's distributed runtime. It implements the same communication
-//      protocol.
 class ff_dCommTCP: public ff_dCommunicator {
 
 protected:
@@ -233,7 +217,7 @@ public:
 
                     
                     if (this->handleRequest(actualFD) < 0){
-                        close(actualFD); //DESIGN: capire perché questa close non rompe niente
+                        close(actualFD);
                         FD_CLR(actualFD, &set);
 
                         // update the maximum file descriptor
@@ -254,15 +238,8 @@ public:
         return 0;
     }
 
-    //DESIGN: probabilmente da rimuovere
-    virtual void send() {
-        return;
-    }
-
     virtual void finalize() {
         close(this->listen_sck);
-        //DESIGN: probabilmente vanno chiusi anche tutti i socket usati per
-        //      comunicazione
     }
 
 
@@ -294,15 +271,11 @@ protected:
         };
 
         margo_init_info args = {
-            .json_config   = NULL,      /* const char*          */
             .progress_pool = pool_e1,   /* ABT_pool             */
             .rpc_pool      = pool_e1,   /* ABT_pool             */
-            .hg_class      = NULL,      /* hg_class_t*          */
-            .hg_context    = NULL,      /* hg_context_t*        */
             .hg_init_info  = &info       /* struct hg_init_info* */
         };
 
-        //DESIGN: this should be changed in case we want a "listening" communicator
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
         assert(*mid != MARGO_INSTANCE_NULL);
         // margo_set_log_level(*mid, MARGO_LOG_TRACE);
@@ -316,7 +289,6 @@ protected:
 
     void register_rpcs(margo_instance_id* mid) {
         ff_erpc_id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, NULL);
-        // NOTE: we actually want a response in the non-blocking version
         margo_registered_disable_response(*mid, ff_erpc_id, HG_TRUE);
 
         ff_eshutdown_id = MARGO_REGISTER(*mid, "ff_rpc_shutdown",
@@ -340,9 +312,6 @@ protected:
         hg_addr_t svr_addr;
 
         const char* proto = endp->protocol.c_str();
-        // FIXME: this call recovers the mid associated to this protocol, but
-        //          what if I skip the "sock2End" map and directly associate the
-        //          mid instance to the socket fd?
         margo_addr_lookup(*proto2Margo[proto], endp->margo_addr.c_str(), &svr_addr);
         assert(svr_addr);
 
@@ -352,8 +321,6 @@ protected:
     }
 
     void forwardRequest(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
-        //CHECK: is this the only way we can do this? What if we pass directly
-        //      the pointer without creating the task from scratch?
         ff_rpc_in_t in;
         in.task = new message_t(task->data.getPtr(), task->data.getLen(), true);
         in.task->chid = task->chid;
@@ -409,20 +376,6 @@ public:
         }        
     }
 
-    //DESIGN: controllare che questa non possa essere portata semplicemente come
-    //      estensione del metodo in cui è utilizzata. In particolare RPC Sender
-    //      chiama il metodo originale e poi aggiunge questa funzione alla fine
-    void set(std::vector<int> sockets) {
-        //DESIGN: this is actually bad in a sense that the sockets vector and the
-        //      endRPC one are strictly tied and they should be arranges in a
-        //      consistent way. Each socket in ith position HAS to represent the
-        //      same host in the endRPC at position i.
-        for (size_t i = 0; i < sockets.size(); i++)
-        {
-            sock2End.insert({sockets[i], this->endRPC[i]});
-        }
-    }
-
     virtual void send(message_t* task, bool ext) {
         ff_endpoint_rpc* endp;
         hg_id_t rpc_id;
@@ -430,13 +383,10 @@ public:
         int sck = ext ? dest2Socket[task->chid] : internalDest2Socket[task->chid];
 
         rpc_id = ext ? ff_erpc_id : ff_irpc_id;
-        //DESIGN: this is like this but might be changed, since we are assuming
-        //      that only an EOS message can have zero length
         if(task->data.getLen() == 0) {
             rpc_id = ext ? ff_eshutdown_id : ff_ishutdown_id;
 
             if(ext)
-                //FIXME: check if sockets here is meant like "only the external ones"
                 for(const auto& sck : sockets) {
                     endp = sock2End[sck];
                     forwardRequest(task, rpc_id, endp);             
@@ -450,7 +400,6 @@ public:
             return;
         }
         endp = sock2End[sck];
-        std::cout << "Forwarding EOS external " << endp->margo_addr.c_str() << "\n";
 
         forwardRequest(task, rpc_id, endp);
     }
@@ -468,7 +417,11 @@ public:
 
     virtual int handshake() {
         int ret = ff_dCommunicatorS::handshake();
-        this->set(socks); //DESIGN: fix socks being member 
+        
+        for (size_t i = 0; i < socks.size(); i++)
+        {
+            sock2End.insert({socks[i], this->endRPC[i]});
+        }
 
         return ret;
     }
@@ -508,12 +461,9 @@ public:
     virtual void send(message_t* task, bool external) {
         int sck = external ? dest2Socket[task->chid] : internalDest2Socket[task->chid];
 
-        //DESIGN: this is like this but might be changed, since we are assuming
-        //      that only an EOS message can have zero length
         if(task->data.getLen() == 0) {
             printf("Sending EOS\n");
             if(external)
-                //FIXME: check if sockets here is meant like "only the external ones"
                 for(const auto& sck : sockets) {
                     sendToSck(sck, task);
                 } 
@@ -524,7 +474,6 @@ public:
             
             return;
         }
-        printf("Sending normal message\n");
         sendToSck(sck, task);
     }
     
