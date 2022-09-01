@@ -41,8 +41,8 @@ protected:
         // Check if the listening address is the requested one
         char addr_self_string[128];
         get_self_addr(mid, addr_self_string);
-        fprintf(stderr, "# accepting RPCs on address \"%s\"\n",
-            addr_self_string);
+        // fprintf(stderr, "# accepting RPCs on address \"%s\"\n",
+        //     addr_self_string);
     }
 
 
@@ -285,8 +285,8 @@ protected:
         // Check if the listening address is the requested one
         char addr_self_string[128];
         get_self_addr(mid, addr_self_string);
-        fprintf(stderr, "# accepting RPCs on address \"%s\"\n",
-            addr_self_string);
+        // fprintf(stderr, "# accepting RPCs on address \"%s\"\n",
+            // addr_self_string);
     }
 
     void register_rpcs(margo_instance_id* mid) {
@@ -544,7 +544,6 @@ DEFINE_MARGO_RPC_HANDLER(ff_rpc_internal_comm)
 
 
 void ff_rpc_shutdown_comm(hg_handle_t handle) {
-    std::cout << "Received an external shutdown!\n";
     const struct hg_info*   info;
     margo_instance_id       mid;
 
@@ -565,8 +564,6 @@ DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown_comm);
 
 
 void ff_rpc_shutdown_internal_comm(hg_handle_t handle) {
-    std::cout << "Received an internal shutdown!\n";
-
     const struct hg_info*   info;
     margo_instance_id       mid;
 

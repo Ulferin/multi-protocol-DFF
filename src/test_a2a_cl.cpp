@@ -4,7 +4,7 @@
  *                        | -> Rnode2 -> |    
  *                        |              |
  *           |-> Lnode1 ->| -> Rnode2 -> |
- *  Source ->|            |              | --> Forwarder --> Sink
+ *  Source ->|            |              | --> Sink
  *           |-> Lnode2 ->| -> Rnode2 -> |
  *                        |              |
  *                        | -> Rnode2 -> |
@@ -16,42 +16,18 @@
  *     G0                        G1
  *   --------         -----------------------
  *  |        |       |           |-> Rnode1  |
- *  | Source | --->  | Lnode1 -->|           | -->|    -----------      ------
- *  |        |  |    |           |-> Rnode2  |    |   |           |    |      |
- *   --------   |     -----------------------     |-->| Forwarder |--> | Sink |
- *              |              |  ^               |   |           |    |      |
- *              |              |  |               |    -----------      ------
- *              |              v  |               |         G3            G4
+ *  | Source | --->  | Lnode1 -->|           | -->|     ------
+ *  |        |  |    |           |-> Rnode2  |    |    |      |
+ *   --------   |     -----------------------     |--> | Sink |
+ *              |              |  ^               |    |      |
+ *              |              |  |               |     ------
+ *              |              v  |               |       G4
  *              |     -----------------------     | 
  *               --> |           |-> Rnode3  | -->|  
  *                   | Lnode2 -->|           |
  *                   |           |-> Rnode4  |
  *                    -----------------------
  *                              G2
- *
- * 
- * 
- *                               --------
- *                         ---> |   G1   | ---> |
- *   --------             |      --------       |             --------            --------
- *  |   G0   | --Margo--> |        |  ^         | --Margo--> |   G3   | --TCP--> |   G4   |
- *   --------             |        v  |         |             --------            --------
- *                        |      --------       |            
- *			               ---> |   G2   | ---> |
- *						         --------
- *
- *
- * Where: 
- *	(G0 -> G1) |
- *	(G0 -> G2) |
- *	(G1 -> G2) |
- *	(G2 -> G1) |
- *	(G1 -> G3) |
- *	(G2 -> G3) |
- *			   |-------> Margo communicator
- *
- *	(G3 -> G4) |
- *			   |-------> TCP communicator
  *
  * 
  * 
@@ -71,6 +47,7 @@
 #include <map>
 #include <numeric>
 #include <execution>
+#include <algorithm>
 
 #include "ff_dAreceiver.hpp"
 #include "ff_dAsender.hpp"
@@ -115,8 +92,8 @@ struct Source : ff_monode_t<myTask_t>{
 };
 
 struct Lnode : ff_monode_t<myTask_t>{
-    int numWorker, generatorID, count = 0;
-    Lnode(int numWorker, int generatorID) : numWorker(numWorker), generatorID(generatorID) {}
+    int numWorker, generatorID, count = 0, mswait=0;
+    Lnode(int numWorker, int generatorID, int mswait=0) : numWorker(numWorker), generatorID(generatorID), mswait(mswait) {}
 
     int svc_init() {
         std::cout << "Starting LNode " << generatorID << "\n";
@@ -126,12 +103,12 @@ struct Lnode : ff_monode_t<myTask_t>{
     myTask_t* svc(myTask_t* in){
         printf("LNode %d (%ld): starting generating tasks!\n", generatorID, get_my_id());
         printf("LNode %d (%ld): Received \"%s - [%ld, %f]\".\n", generatorID, get_my_id(), in->str.c_str(), in->S.t, in->S.f);
-        // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(mswait));
         for(int i = 0; i < numWorker; i++) {
             count++;
 			myTask_t* out = new myTask_t;
 			out->str = std::string(std::string("Task" + std::to_string(i) + " generated from " + std::to_string(generatorID) + " for " + std::to_string(i)));
-			out->S.t = in->S.t;
+            out->S.t = in->S.t;
 			out->S.f = in->S.f;
 			
 			ff_send_out_to(out, i);
@@ -158,12 +135,15 @@ struct Rnode : ff_minode_t<myTask_t>{
     myTask_t* svc(myTask_t* in){
         std::this_thread::sleep_for(std::chrono::milliseconds(mswait));
         printf("RNode %d: Received \"%s - [%ld, %f]\".\n", ID, in->str.c_str(), in->S.t, in->S.f);
-        in->str =std::string(std::string(in->str + " received by Rnode " + std::to_string(ID) + " from channel " +  std::to_string(get_channel_id())));
+        // in->str =std::string(std::string(in->str + " received by Rnode " + std::to_string(ID) + " from channel " +  std::to_string(get_channel_id())));
         return in;
     }
 };
 
 struct Sink : ff_node_t<myTask_t>{
+    int verbose = 0;
+    Sink(int verbose=0) : verbose(verbose) {}
+
     int count = 0, count_prev = 0;
     long double sum = 0;
     double prev_t = 0, curr_t = 0;
@@ -175,7 +155,7 @@ struct Sink : ff_node_t<myTask_t>{
         if((curr_t - prev_t) >= 1000) {
             double tstamp = ((count - count_prev) / (curr_t - prev_t))*1000;
             tstamps.push_back(tstamp);
-            std::cout << "msg/s: " << tstamp << "\n";
+            if(verbose) std::cout << "msg/s: " << tstamp << "\n";
             count_prev = count;
             prev_t = curr_t;
         }
@@ -186,10 +166,17 @@ struct Sink : ff_node_t<myTask_t>{
     }
 
     void svc_end() {
+        if(count - count_prev != 0) {
+            curr_t = ff::ffTime(STOP_TIME);
+            double tstamp = ((count - count_prev) / (curr_t - prev_t))*1000;
+            tstamps.push_back(tstamp);
+            if(verbose) std::cout << "msg/s: " << tstamp << "\n";
+        }
+        if(verbose) printf("I've received: %d tasks and the sum is: %Lf\n", count, sum);
+
         auto const v_size = static_cast<float>(tstamps.size());
         auto const avg = std::reduce(tstamps.begin(), tstamps.end()) / v_size;
-        printf("I've received: %d tasks and the sum is: %Lf\n", count, sum);
-        printf("Avg msg/s: %f\n", avg);
+        printf("msg/s || real avg: %f - approximate avg: %f\n", avg, (count / ff::ffTime(STOP_TIME))*1000);
     }
 	
 };
@@ -214,12 +201,15 @@ int main(int argc, char*argv[]){
     }
 
     int ntask = 10000;
-    int mswait = 2;
+    int Rmswait = 2;
+    int Lmswait = 2;
 
-    if(argc == 4) {
+    if(argc >= 5) {
         ntask = atoi(argv[2]);
-        mswait = atoi(argv[3]);
+        Lmswait = atoi(argv[3]);
+        Rmswait = atoi(argv[4]);
     }
+    int verbose = (argc >= 6) ? atoi(argv[5]) : 0;
 
     margo_set_environment(NULL);
     // margo_set_global_log_level(MARGO_LOG_TRACE);
@@ -251,26 +241,26 @@ int main(int argc, char*argv[]){
 
 
     /* --- TCP HANDSHAKE ENDPOINTS --- */
-    ff_endpoint g1("127.0.0.1", 65005);
+    ff_endpoint g1("192.168.1.17", 65005);
     g1.groupName = "G1";
 
-    ff_endpoint g2("127.0.0.1", 56002);
+    ff_endpoint g2("192.168.1.17", 56002);
     g2.groupName = "G2";
 
-    ff_endpoint g3("127.0.0.1", 65004);
+    ff_endpoint g3("192.168.1.17", 65004);
     g3.groupName = "G3";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
 
     /* --- RPC ENDPOINTS --- */
-    ff_endpoint_rpc G0toG1_rpc("127.0.0.1", 65000, "ofi+sockets");
-    ff_endpoint_rpc G2toG1_rpc("127.0.0.1", 65001, "ofi+sockets");
+    ff_endpoint_rpc G0toG1_rpc("192.168.1.17", 65000, "ofi+sockets");
+    ff_endpoint_rpc G2toG1_rpc("192.168.1.17", 65001, "ofi+sockets");
 
-    ff_endpoint_rpc G0toG2_rpc("127.0.0.1", 56000, "ofi+sockets");
-    ff_endpoint_rpc G1toG2_rpc("127.0.0.1", 56001, "ofi+sockets");
+    ff_endpoint_rpc G0toG2_rpc("192.168.1.17", 56000, "ofi+sockets");
+    ff_endpoint_rpc G1toG2_rpc("192.168.1.17", 56001, "ofi+sockets");
 
-    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", 65002, "ofi+sockets");
-    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", 65003, "ofi+sockets");
+    ff_endpoint_rpc G1toG3_rpc("192.168.1.17", 65002, "ofi+sockets");
+    ff_endpoint_rpc G2toG3_rpc("192.168.1.17", 65003, "ofi+sockets");
     /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;
@@ -312,13 +302,13 @@ int main(int argc, char*argv[]){
         gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 
-		auto s = new Lnode(4,0);
+		auto s = new Lnode(4,0,Lmswait);
 		
         auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF)), new EmitterAdapter(s, 4, 0, {{0,0}, {1,1}}, true), true, true);
 
         a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({{0,0}, {1,1}})});
-        auto rnode0 = new Rnode(0, mswait);
-		auto rnode1 = new Rnode(1, mswait);
+        auto rnode0 = new Rnode(0, Rmswait);
+		auto rnode1 = new Rnode(1, Rmswait);
         a2a.add_secondset<ff_node>({
 									new ff_comb(new CollectorAdapter(rnode0, {0}, true),
 												new WrapperOUT(new ForwarderNode(rnode0->serializeF), 0, 1, true)),
@@ -346,13 +336,13 @@ int main(int argc, char*argv[]){
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 
-		auto s = new Lnode(4,1);                                                                           
+		auto s = new Lnode(4,1,Lmswait);                                                                           
 		auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF)), new EmitterAdapter(s, 4, 1, {{2,0}, {3,1}}, true), true, true);
 
         a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(2,0), std::make_pair(3,1)})}, 0, true);
 
-        auto rnode2 = new Rnode(2, mswait);
-		auto rnode3 = new Rnode(3, mswait);
+        auto rnode2 = new Rnode(2, Rmswait);
+		auto rnode3 = new Rnode(3, Rmswait);
 		a2a.add_secondset<ff_node>({
 									new ff_comb(new CollectorAdapter(rnode2, {1}, true),
 												new WrapperOUT(new ForwarderNode(rnode2->serializeF), 2, 1, true), true, true),
@@ -362,6 +352,23 @@ int main(int argc, char*argv[]){
 			                        }, true);		
         
     } else {
+
+        std::string *test_type;
+        #ifdef RPC_TEST
+        test_type = new std::string("RPC");
+        #endif
+        #ifdef TCP_TEST
+        test_type = new std::string("TCP");
+        #endif
+
+        printf("-- Testing %s communication --\n", test_type->c_str());
+        int total_task = ntask * 4;
+        int expected_completion = std::max((ntask/2) * Lmswait, ntask * Rmswait);
+        
+        printf("Configuration || ntask: %d - LNode wait (ms per task): %d - RNode wait (ms per task): %d\n", ntask, Lmswait, Rmswait);
+        printf("Total number of task to the Sink node: %d\n", total_task);
+        printf("Expected completion time (in ms): %d\n", expected_completion);
+
         ffTime(START_TIME);
         // gFarm.add_emitter(new ff_dreceiver(g3, 2));                                                  //ORIGINAL
         
@@ -376,7 +383,7 @@ int main(int argc, char*argv[]){
         gFarm.add_emitter(new ff_dAreceiver(new ff_dCommTCP(g3, false),2, -1, 1));                      
 		#endif
 		
-		gFarm.add_workers({new WrapperIN(new Sink(), 1, true)});
+		gFarm.add_workers({new WrapperIN(new Sink(verbose), 1, true)});
         gFarm.run_and_wait_end();
         
         ffTime(STOP_TIME);
