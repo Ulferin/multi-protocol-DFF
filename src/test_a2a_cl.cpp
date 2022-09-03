@@ -209,7 +209,8 @@ int main(int argc, char*argv[]){
         Lmswait = atoi(argv[3]);
         Rmswait = atoi(argv[4]);
     }
-    int verbose = (argc >= 6) ? atoi(argv[5]) : 0;
+    const char* protocol = (argc >= 6) ? argv[5] : "ofi+sockets";
+    int verbose = (argc >= 7) ? atoi(argv[6]) : 0;
 
     margo_set_environment(NULL);
     // margo_set_global_log_level(MARGO_LOG_TRACE);
@@ -241,26 +242,26 @@ int main(int argc, char*argv[]){
 
 
     /* --- TCP HANDSHAKE ENDPOINTS --- */
-    ff_endpoint g1("192.168.1.17", 65005);
+    ff_endpoint g1("192.168.1.17", 49500);
     g1.groupName = "G1";
 
-    ff_endpoint g2("192.168.1.17", 56002);
+    ff_endpoint g2("192.168.1.17", 49501);
     g2.groupName = "G2";
 
-    ff_endpoint g3("192.168.1.17", 65004);
+    ff_endpoint g3("192.168.1.17", 49502);
     g3.groupName = "G3";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
 
     /* --- RPC ENDPOINTS --- */
-    ff_endpoint_rpc G0toG1_rpc("192.168.1.17", 65000, "ofi+sockets");
-    ff_endpoint_rpc G2toG1_rpc("192.168.1.17", 65001, "ofi+sockets");
+    ff_endpoint_rpc G0toG1_rpc("192.168.1.17", 49503, protocol);
+    ff_endpoint_rpc G2toG1_rpc("192.168.1.17", 49504, protocol);
 
-    ff_endpoint_rpc G0toG2_rpc("192.168.1.17", 56000, "ofi+sockets");
-    ff_endpoint_rpc G1toG2_rpc("192.168.1.17", 56001, "ofi+sockets");
+    ff_endpoint_rpc G0toG2_rpc("192.168.1.17", 49505, protocol);
+    ff_endpoint_rpc G1toG2_rpc("192.168.1.17", 49506, protocol);
 
-    ff_endpoint_rpc G1toG3_rpc("192.168.1.17", 65002, "ofi+sockets");
-    ff_endpoint_rpc G2toG3_rpc("192.168.1.17", 65003, "ofi+sockets");
+    ff_endpoint_rpc G1toG3_rpc("192.168.1.17", 49507, protocol);
+    ff_endpoint_rpc G2toG3_rpc("192.168.1.17", 49508, protocol);
     /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;
@@ -361,7 +362,7 @@ int main(int argc, char*argv[]){
         test_type = new std::string("TCP");
         #endif
 
-        printf("-- Testing %s communication --\n", test_type->c_str());
+        printf("-- Testing %s communication with \"%s\" --\n", test_type->c_str(), protocol);
         int total_task = ntask * 4;
         int expected_completion = std::max((ntask/2) * Lmswait, ntask * Rmswait);
         
