@@ -89,7 +89,7 @@ protected:
         return 0;
     }
 
-    int _listen() {
+    virtual int _listen() {
         if (this->_init() == -1) {
             error("Error initializing communicator\n");
             return -1;
@@ -185,7 +185,7 @@ protected:
 
 class ff_dCommunicatorS {
 protected:
-    int receiveReachableDestinations(int sck, std::map<int,int>& m){
+    virtual int receiveReachableDestinations(int sck, std::map<int,int>& m){
        
         size_t sz;
         ssize_t r;
@@ -411,4 +411,5 @@ protected:
     std::map<int, int>                      internalDest2Socket;//FIXME: same
     std::vector<int>                        socks;  //CHECK: is it really used?
 };
+
 #endif

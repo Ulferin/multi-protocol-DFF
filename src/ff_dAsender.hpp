@@ -75,10 +75,12 @@ public:
     }
 
     void svc_end() {
+        printf("[SENDER] Received: %d\n", received);
         communicator->finalize();
     }
 
     message_t *svc(message_t* task) {
+        received++;
         // Conditionally retrieve endpoint information and RPC id based on
         // internal/external chid.
         if (internalDests > 0
@@ -117,6 +119,7 @@ public:
 
         if (++neos >= this->get_num_inchannels()) {
             message_t E_O_S(0,0);
+            printf("[SENDER] Sending an external EOS\n");
             communicator->send(&E_O_S, true);
         }
     }
@@ -133,6 +136,8 @@ protected:
     std::map<int, int>::const_iterator  rr_iterator;
     std::map<int, int>                  internalDest2Socket;
     int                                 externalDests = 0, internalDests = 0;
+
+    int received = 0;
 };
 
 #endif
