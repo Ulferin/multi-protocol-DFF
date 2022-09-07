@@ -406,9 +406,9 @@ protected:
     std::string                             gName;
     std::set<std::string>                   internalGroups;
     std::vector<int>                        sockets;
-    std::map<int, int>                      dest2Socket;
-    std::vector<int>                        internalSockets;
-    std::map<int, int>                      internalDest2Socket;
-    std::vector<int>                        socks;
+    std::map<int, int>                      dest2Socket;        //FIXME: poor naming, this is simply dest2handle
+    std::vector<int>                        internalSockets;    //FIXME: same
+    std::map<int, int>                      internalDest2Socket;//FIXME: same
+    std::vector<int>                        socks;  //CHECK: is it really used?
 };
 #endif
