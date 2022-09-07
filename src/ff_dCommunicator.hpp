@@ -6,7 +6,225 @@
 #include "ff_dCommI.hpp"
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
+#include <margo.h>
 
+#include <mpi.h>
+
+#ifndef DFF_EXCLUDE_MPI
+class ff_dCommMPI: public ff_dCommunicator {
+
+public:
+    ff_dCommMPI(ff_endpoint handshakeAddr, bool internal,
+        std::vector<int> internalDestinations = {0},
+        std::map<int, int> routingTable = {{0,0}},
+        std::set<std::string> internalGroupsNames = {}, std::set<int> internalRanks = {}):
+        ff_dCommunicator(handshakeAddr, internal, internalDestinations,
+            routingTable, internalGroupsNames), internalRanks(internalRanks) {}
+
+    virtual void init(ff_monode_t<message_t>* data, int input_channels) {
+        receiver = (ff_dAreceiver*)data;
+        this->input_channels = input_channels;
+    }
+
+    virtual int comm_listen() {
+        if(ff_dCommunicator::comm_listen() == -1)
+            return -1;
+        
+        MPI_Status status;
+        long header[3] = {0,0,0};
+        while(neos < input_channels){
+
+            if (MPI_Recv(header, 3, MPI_LONG, MPI_ANY_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &status) != MPI_SUCCESS)
+                error("Error on Recv Receiver primo in alto\n");
+
+            receiver->received++;
+            
+            size_t sz = header[0];
+
+            if (sz == 0){
+                neos++;
+                printf("[%d][R - MPI] Received EOS\n", isInternalConnection[status.MPI_SOURCE]);
+                receiver->registerEOS(isInternalConnection[status.MPI_SOURCE]);
+                continue;
+            }
+
+            char* buff = new char[sz];
+            assert(buff);
+            
+            if (MPI_Recv(buff,sz,MPI_BYTE, status.MPI_SOURCE, DFF_TASK_TAG, MPI_COMM_WORLD, &status) != MPI_SUCCESS)
+                error("Error on Recv Receiver Payload\n");
+
+            if(isInternalConnection[status.MPI_SOURCE]) {
+                printf("[INTERNAL]");
+            }
+            else printf("[EXTERNAL]");
+
+            printf("[%d][R - MPI] Received from %d - h0:%ld - h1:%ld - h2:%ld\n", isInternalConnection[status.MPI_SOURCE], status.MPI_SOURCE, header[0], header[1], header[2]);
+
+            message_t* out = new message_t(buff, sz, true);
+            assert(out);
+            out->sender = header[1];
+            out->chid   = header[2];
+
+			assert(out->chid>=0);
+            receiver->forward(out, isInternalConnection[status.MPI_SOURCE]);
+            
+        }
+        
+        return 0;
+    }
+
+    virtual void finalize() {
+        // std::cout << "Finalize over.\n";
+    }
+
+protected:
+    virtual int handshakeHandler(){
+        int r;
+        MPI_Status status;
+
+        MPI_Recv(&r, 1, MPI_INT, MPI_ANY_SOURCE, DFF_ROUTING_TABLE_REQUEST_TAG, MPI_COMM_WORLD, &status);
+        
+        if(internal) {
+            bool internalGroup = internalRanks.contains(status.MPI_SOURCE);
+            isInternalConnection[status.MPI_SOURCE] = internalGroup;
+
+            if(internalGroup) return this->sendRoutingTable(status.MPI_SOURCE, internalDestinations);
+        }
+
+        std::vector<int> reachableDestinations;
+        for(const auto& [key, value] : this->routingTable)
+            reachableDestinations.push_back(key);
+
+        return this->sendRoutingTable(status.MPI_SOURCE, reachableDestinations);
+    }
+
+    int sendRoutingTable(const int rank, const std::vector<int>& dest){
+        dataBuffer buff; std::ostream oss(&buff);
+		cereal::PortableBinaryOutputArchive oarchive(oss);
+		oarchive << dest;        
+
+        printf("Sending routing table %ld\n", buff.getLen());
+        if (MPI_Send(buff.getPtr(), buff.getLen(), MPI_BYTE, rank, DFF_ROUTING_TABLE_TAG, MPI_COMM_WORLD) != MPI_SUCCESS){
+            error("Something went wrong sending the routing table!\n");
+        }
+
+        return 0;
+    }
+
+    virtual int _listen() {
+
+        for(size_t i = 0; i < input_channels; i++)
+            handshakeHandler();
+
+        return 0;
+    }
+
+protected:
+    ff_dAreceiver* receiver;
+    std::set<int> internalRanks;
+    size_t neos = 0;
+    
+};
+
+
+class ff_dCommMPIS: public ff_dCommunicatorS {
+
+protected:
+    virtual int receiveReachableDestinations(int rank, std::map<int,int>& m){
+        int sz;
+        int cmd = DFF_REQUEST_ROUTING_TABLE;
+        
+        MPI_Status status;
+        MPI_Send(&cmd, 1, MPI_INT, rank, DFF_ROUTING_TABLE_REQUEST_TAG, MPI_COMM_WORLD);
+        MPI_Probe(rank, DFF_ROUTING_TABLE_TAG, MPI_COMM_WORLD, &status);
+        MPI_Get_count(&status,MPI_BYTE, &sz);
+        char* buff = new char [sz];
+        std::cout << "Received routing table (" << sz  << " bytes) from " << rank << std::endl;
+        MPI_Recv(buff, sz, MPI_BYTE, rank, DFF_ROUTING_TABLE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+
+        dataBuffer dbuff(buff, sz, true);
+        std::istream iss(&dbuff);
+		cereal::PortableBinaryInputArchive iarchive(iss);
+        std::vector<int> destinationsList;
+
+        iarchive >> destinationsList;
+
+        for (int d : destinationsList) {
+            printf("Putting relation (%d, %d)\n", d, rank);
+            m[d] = rank;
+        }
+
+        return 0;
+    }
+
+public:
+    ff_dCommMPIS(ff_endpoint dest_endpoint, std::string gName = "",
+        std::set<std::string> internalGroups = {}, std::set<int> internalRanks = {}):
+        ff_dCommunicatorS(dest_endpoint, gName, internalGroups), internalRanks(internalRanks) {}
+
+    ff_dCommMPIS(std::vector<ff_endpoint> dest_endpoints_,
+        std::string gName = "", std::set<std::string> internalGroups = {}, std::set<int> internalRanks = {}):
+        ff_dCommunicatorS(dest_endpoints_, gName, internalGroups), internalRanks(internalRanks){}
+
+    virtual void init() {
+        // std::cout << "Init over.\n";
+    }
+
+    virtual void send(message_t* task, bool external) {
+        int rank = external ? dest2Socket[task->chid] : internalDest2Socket[task->chid];
+        size_t sz = task->data.getLen();
+        long E_O_S[3] = {long(0),0,0};
+
+
+        if(sz == 0) {
+            if(external)
+                for(const auto& r : sockets) {
+                    printf("Sending EOS external to rank %d\n", r);
+                    MPI_Send(E_O_S, 3, MPI_LONG, r, DFF_HEADER_TAG, MPI_COMM_WORLD);
+                } 
+            else
+                for(const auto& r : internalSockets) {
+                    printf("Sending EOS internal to rank %d\n", r);
+                    MPI_Send(E_O_S, 3, MPI_LONG, r, DFF_HEADER_TAG, MPI_COMM_WORLD);
+                }
+            
+            return;
+        }
+        long header[3] = {(long)sz, task->sender, task->chid};
+        printf("[S - MPI] Sending to %d - h0:%ld - h1:%ld - h2:%ld\n", rank, header[0], header[1], header[2]);
+        MPI_Send(header, 3, MPI_LONG, rank, DFF_HEADER_TAG, MPI_COMM_WORLD);
+        MPI_Send(task->data.getPtr(), sz, MPI_BYTE, rank, DFF_TASK_TAG, MPI_COMM_WORLD);
+        //CHECK: delete task here
+    }
+
+    virtual void finalize() {
+        // std::cout << "Finalize over.\n";
+    }
+
+    virtual int handshake() {
+        for (size_t i = 0; i < this->dest_endpoints.size(); i++)
+        {
+            std::cout << "Trying to connect to: " << this->dest_endpoints[i].port
+                 << "\n";
+            int r = this->dest_endpoints[i].getRank();
+
+            bool isInternal = internalRanks.contains(r);
+            if (isInternal) internalSockets.push_back(r);
+            else sockets.push_back(r);
+            receiveReachableDestinations(r, isInternal ? internalDest2Socket : dest2Socket);
+            socks.push_back(r);
+        }
+        return 0;
+    }
+
+protected:
+    std::set<int> internalRanks;
+
+
+};
+#endif
 
 
 class ff_dCommRPC: public ff_dCommunicator {
@@ -506,6 +724,7 @@ void ff_rpc_comm(hg_handle_t handle) {
     ff_dAreceiver* receiver =
         (ff_dAreceiver*)margo_registered_data(mid, info->id);
 
+    receiver->received++;
     receiver->forward(in.task, false);
 
     margo_free_input(handle, &in);
@@ -533,6 +752,7 @@ void ff_rpc_internal_comm(hg_handle_t handle) {
     ff_dAreceiver* receiver =
         (ff_dAreceiver*)margo_registered_data(mid, info->id);
 
+    receiver->received++;
     receiver->forward(in.task, true);
 
     margo_free_input(handle, &in);

@@ -35,18 +35,18 @@ struct ff_endpoint_rpc : public ff_endpoint {
 /* --- MARGO RPCs declaration */
 
 // RPC function used to send stream elements between external groups
-void ff_rpc(hg_handle_t handle);
+void ff_rpc_comm(hg_handle_t handle);
 DECLARE_MARGO_RPC_HANDLER(ff_rpc_comm);
 
 // RPC function used to send stream elements between internal groups
-void ff_rpc_internal(hg_handle_t handle);
+void ff_rpc_internal_comm(hg_handle_t handle);
 DECLARE_MARGO_RPC_HANDLER(ff_rpc_internal_comm);
 
 // RPC function used to signal EOS to remote groups
-void ff_rpc_shutdown(hg_handle_t handle);
+void ff_rpc_shutdown_comm(hg_handle_t handle);
 DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_comm);
 
-void ff_rpc_shutdown_internal(hg_handle_t handle);
+void ff_rpc_shutdown_internal_comm(hg_handle_t handle);
 DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal_comm);
 
 /* --- MARGO RPCs declaration --- */
@@ -104,7 +104,7 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
             if(ret != HG_SUCCESS)
                 break;
 
-            size_t len;
+            size_t len = 0;
             ret = hg_proc_hg_size_t(proc, &len);
             if(ret != HG_SUCCESS)
                 break;
