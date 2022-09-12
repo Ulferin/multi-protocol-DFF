@@ -16,18 +16,12 @@
 #include <iostream>
 #include <ff/dff.hpp>
 #include <ff/distributed/ff_dadapters.hpp>
-#include <ff/distributed/ff_network.hpp>
-#include <ff/distributed/ff_dsenderMPI.hpp>
-#include <ff/distributed/ff_dreceiverMPI.hpp>
-#include <vector>
 #include <mutex>
 #include <map>
-#include <mpi.h>
 
-#include "ff_dCompI.hpp"
 #include "ff_dCommComp.hpp"
-#include "ff_dAsenderComp.hpp"
 #include "ff_dAreceiverComp.hpp"
+#include "ff_dAsenderComp.hpp"
 
 using namespace ff;
 std::mutex mtx;
@@ -104,86 +98,58 @@ struct ForwarderNode : ff_node {
 
 int main(int argc, char*argv[]){
 
-    if(argc != 2)
-        return -1;
-
-    int ntask = atoi(argv[1]);
-
-    int provided;
-    if (MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided) != MPI_SUCCESS)
-        return -1;  
-      
-    // no thread support 
-    if (provided < MPI_THREAD_MULTIPLE){
-        error("No thread support by MPI\n");
-        return -1;
+    if (argc != 3){
+        std::cerr << "Execute with the index of process!" << std::endl;
+        return 1;
     }
 
-    int myrank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    int ntask = atoi(argv[2]);
 
-    ff_endpoint g1(1);
+    ff_endpoint g1("127.0.0.1", 8001);
     g1.groupName = "G1";
 
-    ff_endpoint g2(2);
+    ff_endpoint g2("127.0.0.1", 8002);
     g2.groupName = "G2";
 
-    ff_endpoint g3(3);
+    ff_endpoint g3("127.0.0.1", 8003);
     g3.groupName = "G3";
 
     ff_farm gFarm;
     ff_a2a a2a;
     std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt;
-    if (myrank == 0){
-        rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector({0});
-        rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector({1});
-        #ifdef ORIGINALREC
-        gFarm.add_collector(new ff_dsenderMPI({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt,"G0"));
-        #else
-        // gFarm.add_collector(new ff_dsenderMPI({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt,"G0"));
-        gFarm.add_collector(new ff_dAsender(new ff_dCommMPIS({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt, "G0")));
-        #endif
-
+    if (atoi(argv[1]) == 0){
+        rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector({0}); // NOTE: these are probably the nodes specified in the old receiver. Basically
+        rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector({1}); // NOTE: they are what the sender should have received from the receiver
+        // gFarm.add_collector(new ff_dsender({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt,"G0"));
+        gFarm.add_collector(new ff_dAsender(new ff_dCommTCPS({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt, "G0")));
         gFarm.add_workers({new WrapperOUT(new RealSource(ntask), 0, 1, 0, true)});
 
         gFarm.run_and_wait_end();
-        if (MPI_Finalize() != MPI_SUCCESS) abort();
         return 0;
-    } else if (myrank == 1){
+    } else if (atoi(argv[1]) == 1){
         rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
-        #ifdef ORIGINALREC
-        gFarm.add_emitter(new ff_dreceiverHMPI(2, {{0, 0}}));
-        gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1"));
-        #else
-        // gFarm.add_emitter(new ff_dreceiverHMPI(2, {{0, 0}}));
-        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommMPI(2, {{0,0}}), 2));
-        // gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1"));
-        gFarm.add_collector(new ff_dAsenderH(new ff_dCommMPIS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")));
-        #endif
+        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommTCP(g1, 2, {{0, 0}}), 2));
+        // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}));
+        gFarm.add_collector(new ff_dAsenderH(new ff_dCommTCPS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")));
+        // gFarm.add_collector(new ff_dsenderH({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1"));
 
 		auto s = new Source(2,0);
         auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 2, 0, {{0,0}}, true), true, true);
 
-        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(0,0)})}, 0, true);
+        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(0,0)})});
         auto sink = new Sink(0);
         a2a.add_secondset<ff_node>({new ff_comb(new CollectorAdapter(sink, {0}, true), new WrapperOUT(new ForwarderNode(sink->serializeF, sink->freetaskF), 0, 1, 0, true)), new SquareBoxRight});
 
-    } else if (myrank == 2) {
+    } else if (atoi(argv[1]) == 2) {
         rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
-        #ifdef ORIGINALREC
-        gFarm.add_emitter(new ff_dreceiverHMPI(2, {{1, 0}}));
-        gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g1}, {ChannelType::FWD, g3}}, &rt, "G2"));
-        #else
-        // gFarm.add_emitter(new ff_dreceiverHMPI(2, {{1, 0}}));
-        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommMPI(2, {{1,0}}), 2));
-        // gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g1}, {ChannelType::FWD, g3}}, &rt, "G2"));
-        gFarm.add_collector(new ff_dAsenderH(new ff_dCommMPIS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")));
-        #endif
-
+        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommTCP(g2, 2, {{1, 0}}), 2));
+        // gFarm.add_emitter(new ff_dreceiverH(g2, 2, {{1, 0}}));
+        gFarm.add_collector(new ff_dAsenderH(new ff_dCommTCPS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")));
+        // gFarm.add_collector(new ff_dsenderH({{ChannelType::INT, g1}, {ChannelType::FWD, g3}}, &rt, "G2"));
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 
@@ -202,22 +168,13 @@ int main(int argc, char*argv[]){
 		
         
     } else {
-        
-        #ifdef ORIGINALREC
-        gFarm.add_emitter(new ff_dreceiverMPI(2));
-        #else
-        // gFarm.add_emitter(new ff_dreceiverMPI(2));
-        gFarm.add_emitter(new ff_dAreceiver(new ff_dCommMPI(2), 2));
-        #endif
+        gFarm.add_emitter(new ff_dAreceiver(new ff_dCommTCP(g3, 2), 2));
+        // gFarm.add_emitter(new ff_dreceiver(g3, 2));
+         gFarm.add_workers({new WrapperIN(new StringPrinter(), 1, true)});
 
-        gFarm.add_workers({new WrapperIN(new StringPrinter(), 1, true)});
-
-        gFarm.run_and_wait_end();
-        if (MPI_Finalize() != MPI_SUCCESS) abort();
-        return 0;
+         gFarm.run_and_wait_end();
+         return 0;
     }
     gFarm.add_workers({&a2a});
     gFarm.run_and_wait_end();
-    if (MPI_Finalize() != MPI_SUCCESS) abort();
-    return 0;
 }

@@ -1,231 +1,14 @@
 #ifndef FF_DCOMM
 #define FF_DCOMM
 
-#include "ff_dAreceiver.hpp"
-#include "ff_dAsender.hpp"
-#include "ff_dCommI.hpp"
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
 #include <margo.h>
 
-#include <mpi.h>
-
-#ifndef DFF_EXCLUDE_MPI
-class ff_dCommMPI: public ff_dCommunicator {
-
-public:
-    ff_dCommMPI(ff_endpoint handshakeAddr, bool internal,
-        std::vector<int> internalDestinations = {0},
-        std::map<int, int> routingTable = {{0,0}},
-        std::set<std::string> internalGroupsNames = {}, std::set<int> internalRanks = {}):
-        ff_dCommunicator(handshakeAddr, internal, internalDestinations,
-            routingTable, internalGroupsNames), internalRanks(internalRanks) {}
-
-    virtual void init(ff_monode_t<message_t>* data, int input_channels) {
-        receiver = (ff_dAreceiver*)data;
-        this->input_channels = input_channels;
-    }
-
-    virtual int comm_listen() {
-        if(ff_dCommunicator::comm_listen() == -1)
-            return -1;
-        
-        MPI_Status status;
-        long header[3] = {0,0,0};
-        while(neos < input_channels){
-
-            if (MPI_Recv(header, 3, MPI_LONG, MPI_ANY_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &status) != MPI_SUCCESS)
-                error("Error on Recv Receiver primo in alto\n");
-
-            receiver->received++;
-            
-            size_t sz = header[0];
-
-            if (sz == 0){
-                neos++;
-                printf("[%d][R - MPI] Received EOS\n", isInternalConnection[status.MPI_SOURCE]);
-                receiver->registerEOS(isInternalConnection[status.MPI_SOURCE]);
-                continue;
-            }
-
-            char* buff = new char[sz];
-            assert(buff);
-            
-            if (MPI_Recv(buff,sz,MPI_BYTE, status.MPI_SOURCE, DFF_TASK_TAG, MPI_COMM_WORLD, &status) != MPI_SUCCESS)
-                error("Error on Recv Receiver Payload\n");
-
-            if(isInternalConnection[status.MPI_SOURCE]) {
-                printf("[INTERNAL]");
-            }
-            else printf("[EXTERNAL]");
-
-            printf("[%d][R - MPI] Received from %d - h0:%ld - h1:%ld - h2:%ld\n", isInternalConnection[status.MPI_SOURCE], status.MPI_SOURCE, header[0], header[1], header[2]);
-
-            message_t* out = new message_t(buff, sz, true);
-            assert(out);
-            out->sender = header[1];
-            out->chid   = header[2];
-
-			assert(out->chid>=0);
-            receiver->forward(out, isInternalConnection[status.MPI_SOURCE]);
-            
-        }
-        
-        return 0;
-    }
-
-    virtual void finalize() {
-        // std::cout << "Finalize over.\n";
-    }
-
-protected:
-    virtual int handshakeHandler(){
-        int r;
-        MPI_Status status;
-
-        MPI_Recv(&r, 1, MPI_INT, MPI_ANY_SOURCE, DFF_ROUTING_TABLE_REQUEST_TAG, MPI_COMM_WORLD, &status);
-        
-        if(internal) {
-            bool internalGroup = internalRanks.contains(status.MPI_SOURCE);
-            isInternalConnection[status.MPI_SOURCE] = internalGroup;
-
-            if(internalGroup) return this->sendRoutingTable(status.MPI_SOURCE, internalDestinations);
-        }
-
-        std::vector<int> reachableDestinations;
-        for(const auto& [key, value] : this->routingTable)
-            reachableDestinations.push_back(key);
-
-        return this->sendRoutingTable(status.MPI_SOURCE, reachableDestinations);
-    }
-
-    int sendRoutingTable(const int rank, const std::vector<int>& dest){
-        dataBuffer buff; std::ostream oss(&buff);
-		cereal::PortableBinaryOutputArchive oarchive(oss);
-		oarchive << dest;        
-
-        printf("Sending routing table %ld\n", buff.getLen());
-        if (MPI_Send(buff.getPtr(), buff.getLen(), MPI_BYTE, rank, DFF_ROUTING_TABLE_TAG, MPI_COMM_WORLD) != MPI_SUCCESS){
-            error("Something went wrong sending the routing table!\n");
-        }
-
-        return 0;
-    }
-
-    virtual int _listen() {
-
-        for(size_t i = 0; i < input_channels; i++)
-            handshakeHandler();
-
-        return 0;
-    }
-
-protected:
-    ff_dAreceiver* receiver;
-    std::set<int> internalRanks;
-    size_t neos = 0;
-    
-};
-
-
-class ff_dCommMPIS: public ff_dCommunicatorS {
-
-protected:
-    virtual int receiveReachableDestinations(int rank, std::map<int,int>& m){
-        int sz;
-        int cmd = DFF_REQUEST_ROUTING_TABLE;
-        
-        MPI_Status status;
-        MPI_Send(&cmd, 1, MPI_INT, rank, DFF_ROUTING_TABLE_REQUEST_TAG, MPI_COMM_WORLD);
-        MPI_Probe(rank, DFF_ROUTING_TABLE_TAG, MPI_COMM_WORLD, &status);
-        MPI_Get_count(&status,MPI_BYTE, &sz);
-        char* buff = new char [sz];
-        std::cout << "Received routing table (" << sz  << " bytes) from " << rank << std::endl;
-        MPI_Recv(buff, sz, MPI_BYTE, rank, DFF_ROUTING_TABLE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-
-        dataBuffer dbuff(buff, sz, true);
-        std::istream iss(&dbuff);
-		cereal::PortableBinaryInputArchive iarchive(iss);
-        std::vector<int> destinationsList;
-
-        iarchive >> destinationsList;
-
-        for (int d : destinationsList) {
-            printf("Putting relation (%d, %d)\n", d, rank);
-            m[d] = rank;
-        }
-
-        return 0;
-    }
-
-public:
-    ff_dCommMPIS(ff_endpoint dest_endpoint, std::string gName = "",
-        std::set<std::string> internalGroups = {}, std::set<int> internalRanks = {}):
-        ff_dCommunicatorS(dest_endpoint, gName, internalGroups), internalRanks(internalRanks) {}
-
-    ff_dCommMPIS(std::vector<ff_endpoint> dest_endpoints_,
-        std::string gName = "", std::set<std::string> internalGroups = {}, std::set<int> internalRanks = {}):
-        ff_dCommunicatorS(dest_endpoints_, gName, internalGroups), internalRanks(internalRanks){}
-
-    virtual void init() {
-        // std::cout << "Init over.\n";
-    }
-
-    virtual void send(message_t* task, bool external) {
-        int rank = external ? dest2Socket[task->chid] : internalDest2Socket[task->chid];
-        size_t sz = task->data.getLen();
-        long E_O_S[3] = {long(0),0,0};
-
-
-        if(sz == 0) {
-            if(external)
-                for(const auto& r : sockets) {
-                    printf("Sending EOS external to rank %d\n", r);
-                    MPI_Send(E_O_S, 3, MPI_LONG, r, DFF_HEADER_TAG, MPI_COMM_WORLD);
-                } 
-            else
-                for(const auto& r : internalSockets) {
-                    printf("Sending EOS internal to rank %d\n", r);
-                    MPI_Send(E_O_S, 3, MPI_LONG, r, DFF_HEADER_TAG, MPI_COMM_WORLD);
-                }
-            
-            return;
-        }
-        long header[3] = {(long)sz, task->sender, task->chid};
-        printf("[S - MPI] Sending to %d - h0:%ld - h1:%ld - h2:%ld\n", rank, header[0], header[1], header[2]);
-        MPI_Send(header, 3, MPI_LONG, rank, DFF_HEADER_TAG, MPI_COMM_WORLD);
-        MPI_Send(task->data.getPtr(), sz, MPI_BYTE, rank, DFF_TASK_TAG, MPI_COMM_WORLD);
-        //CHECK: delete task here
-    }
-
-    virtual void finalize() {
-        // std::cout << "Finalize over.\n";
-    }
-
-    virtual int handshake() {
-        for (size_t i = 0; i < this->dest_endpoints.size(); i++)
-        {
-            std::cout << "Trying to connect to: " << this->dest_endpoints[i].port
-                 << "\n";
-            int r = this->dest_endpoints[i].getRank();
-
-            bool isInternal = internalRanks.contains(r);
-            if (isInternal) internalSockets.push_back(r);
-            else sockets.push_back(r);
-            receiveReachableDestinations(r, isInternal ? internalDest2Socket : dest2Socket);
-            socks.push_back(r);
-        }
-        return 0;
-    }
-
-protected:
-    std::set<int> internalRanks;
-
-
-};
-#endif
-
+#include "ff_dAreceiver.hpp"
+#include "ff_dCommI.hpp"
+#include "ff_drpc_types.h"
+#include "ff_margo_utils.hpp"
 
 class ff_dCommRPC: public ff_dCommunicator {
 
@@ -346,127 +129,6 @@ protected:
     std::vector<margo_instance_id*> mids;
     ABT_pool                        pool_e1;
     ABT_xstream                     xstream_e1;
-
-};
-
-
-class ff_dCommTCP: public ff_dCommunicator {
-
-protected:
-    virtual int handleRequest(int sck){
-   		int sender;
-		int chid;
-        size_t sz;
-        struct iovec iov[3];
-        iov[0].iov_base = &sender;
-        iov[0].iov_len = sizeof(sender);
-        iov[1].iov_base = &chid;
-        iov[1].iov_len = sizeof(chid);
-        iov[2].iov_base = &sz;
-        iov[2].iov_len = sizeof(sz);
-
-        switch (readvn(sck, iov, 3)) {
-           case -1: error("Error reading from socket\n"); // fatal error
-           case  0: return -1; // connection close
-        }
-
-        // convert values to host byte order
-        sender = ntohl(sender);
-        chid   = ntohl(chid);
-        sz     = be64toh(sz);
-
-        if (sz > 0){
-            char* buff = new char [sz];
-			assert(buff);
-            if(readn(sck, buff, sz) < 0){
-                error("Error reading from socket\n");
-                delete [] buff;
-                return -1;
-            }
-			message_t* out = new message_t(buff, sz, true);
-			assert(out);
-			out->sender = sender;
-			out->chid   = chid;
-
-            receiver->forward(out, isInternalConnection[sck]);
-            return 0;
-        }
-
-        neos++;
-        receiver->registerEOS(isInternalConnection[sck]);
-
-        return -1;
-    }
-
-public:
-    ff_dCommTCP(ff_endpoint handshakeAddr, bool internal,
-        std::vector<int> internalDestinations = {0},
-        std::map<int, int> routingTable = {{0,0}},
-        std::set<std::string> internalGroupsNames = {}):
-        ff_dCommunicator(handshakeAddr, internal, internalDestinations,
-            routingTable, internalGroupsNames) {}
-
-
-    virtual void init(ff_monode_t<message_t>* data, int input_channels) {
-        receiver = (ff_dAreceiver*)data;
-        this->input_channels = input_channels;
-    }
-
-    virtual int comm_listen() {
-        if(ff_dCommunicator::comm_listen() == -1) {
-            error("Starting communication\n");
-            return -1;
-        }
-
-        while(neos < input_channels){
-            // copy the master set to the temporary
-            tmpset = set;
-
-            switch(select(fdmax+1, &tmpset, NULL, NULL, NULL)){
-                case -1: error("Error on selecting socket\n"); return -1;
-                case  0: continue;
-            }
-
-            // iterate over the file descriptor to see which one is active
-            int fixed_last = (this->last_receive_fd + 1) % (fdmax +1);
-            for(int i=0; i <= fdmax; i++){
-                int actualFD = (fixed_last + i) % (fdmax +1);
-	            if (FD_ISSET(actualFD, &tmpset)){
-                    // it is not a new connection, call receive and handle possible errors
-                    // save the last socket i
-                    this->last_receive_fd = actualFD;
-
-                    
-                    if (this->handleRequest(actualFD) < 0){
-                        close(actualFD);
-                        FD_CLR(actualFD, &set);
-
-                        // update the maximum file descriptor
-                        if (actualFD == fdmax)
-                            for(int ii=(fdmax-1);ii>=0;--ii)
-                                if (FD_ISSET(ii, &set)){
-                                    fdmax = ii;
-                                    this->last_receive_fd = -1;
-                                    break;
-                                }
-                                    
-                    }
-                   
-                }
-            }
-        }
-        
-        return 0;
-    }
-
-    virtual void finalize() {
-        close(this->listen_sck);
-    }
-
-
-protected:
-    ff_dAreceiver*  receiver;
-    size_t          neos = 0;
 
 };
 
@@ -599,11 +261,12 @@ public:
     virtual void send(message_t* task, bool ext) {
         ff_endpoint_rpc* endp;
         hg_id_t rpc_id;
-
+        count++;
         int sck = ext ? dest2Socket[task->chid] : internalDest2Socket[task->chid];
 
         rpc_id = ext ? ff_erpc_id : ff_irpc_id;
         if(task->data.getLen() == 0) {
+            printf("[SENDER] Forwarding EOS but I only send %d tasks\n", count);
             rpc_id = ext ? ff_eshutdown_id : ff_ishutdown_id;
 
             if(ext)
@@ -660,44 +323,8 @@ public:
 
     hg_id_t                                     ff_erpc_id, ff_eshutdown_id;
     hg_id_t                                     ff_irpc_id, ff_ishutdown_id;
-};
 
-
-class ff_dCommTCPS: public ff_dCommunicatorS {
-
-public:
-    ff_dCommTCPS(ff_endpoint dest_endpoint, std::string gName = "",
-        std::set<std::string> internalGroups = {}):
-        ff_dCommunicatorS(dest_endpoint, gName, internalGroups) {}
-
-    ff_dCommTCPS(std::vector<ff_endpoint> dest_endpoints_,
-        std::string gName = "", std::set<std::string> internalGroups = {}):
-        ff_dCommunicatorS(dest_endpoints_, gName, internalGroups) {}
-
-    virtual void init() {
-        std::cout << "Init over\n";
-    }
-
-    virtual void send(message_t* task, bool external) {
-        int sck = external ? dest2Socket[task->chid] : internalDest2Socket[task->chid];
-
-        if(task->data.getLen() == 0) {
-            printf("Sending EOS\n");
-            if(external)
-                for(const auto& sck : sockets) {
-                    sendToSck(sck, task);
-                } 
-            else
-                for(const auto& sck : internalSockets) {
-                    sendToSck(sck, task);
-                }
-            
-            return;
-        }
-        sendToSck(sck, task);
-    }
-    
-
+    int count = 0;
 };
 
 

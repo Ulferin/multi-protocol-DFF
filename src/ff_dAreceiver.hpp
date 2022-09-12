@@ -43,7 +43,6 @@ public:
 
 
     message_t *svc(message_t* task) { 
-        received++;      
         if(communicator->comm_listen() == -1) {
             error("Listening for messages\n");
         }

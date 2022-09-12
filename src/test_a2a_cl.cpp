@@ -210,7 +210,8 @@ int main(int argc, char*argv[]){
         Rmswait = atoi(argv[4]);
     }
     const char* protocol = (argc >= 6) ? argv[5] : "ofi+sockets";
-    int verbose = (argc >= 7) ? atoi(argv[6]) : 0;
+    int port = (argc >= 7) ? atoi(argv[6]) : 49000;
+    int verbose = (argc >= 8) ? atoi(argv[7]) : 0;
 
     margo_set_environment(NULL);
     // margo_set_global_log_level(MARGO_LOG_TRACE);
@@ -242,26 +243,26 @@ int main(int argc, char*argv[]){
 
 
     /* --- TCP HANDSHAKE ENDPOINTS --- */
-    ff_endpoint g1("192.168.1.17", 49500);
+    ff_endpoint g1("38.242.220.197", port);
     g1.groupName = "G1";
 
-    ff_endpoint g2("192.168.1.17", 49501);
+    ff_endpoint g2("38.242.220.197", port+1);
     g2.groupName = "G2";
 
-    ff_endpoint g3("192.168.1.17", 49502);
+    ff_endpoint g3("38.242.220.197", port+2);
     g3.groupName = "G3";
     /* --- TCP HANDSHAKE ENDPOINTS --- */
 
 
     /* --- RPC ENDPOINTS --- */
-    ff_endpoint_rpc G0toG1_rpc("192.168.1.17", 49503, protocol);
-    ff_endpoint_rpc G2toG1_rpc("192.168.1.17", 49504, protocol);
+    ff_endpoint_rpc G0toG1_rpc("38.242.220.197", port+3, protocol);
+    ff_endpoint_rpc G2toG1_rpc("38.242.220.197", port+4, protocol);
 
-    ff_endpoint_rpc G0toG2_rpc("192.168.1.17", 49505, protocol);
-    ff_endpoint_rpc G1toG2_rpc("192.168.1.17", 49506, protocol);
+    ff_endpoint_rpc G0toG2_rpc("38.242.220.197", port+5, protocol);
+    ff_endpoint_rpc G1toG2_rpc("38.242.220.197", port+6, protocol);
 
-    ff_endpoint_rpc G1toG3_rpc("192.168.1.17", 49507, protocol);
-    ff_endpoint_rpc G2toG3_rpc("192.168.1.17", 49508, protocol);
+    ff_endpoint_rpc G1toG3_rpc("38.242.220.197", port+7, protocol);
+    ff_endpoint_rpc G2toG3_rpc("38.242.220.197", port+8, protocol);
     /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;
@@ -383,13 +384,13 @@ int main(int argc, char*argv[]){
         #ifdef TCP_TEST
         gFarm.add_emitter(new ff_dAreceiver(new ff_dCommTCP(g3, false),2, -1, 1));                      
 		#endif
-		
-		gFarm.add_workers({new WrapperIN(new Sink(verbose), 1, true)});
+		Sink *sink = new Sink(verbose);	
+		gFarm.add_workers({new WrapperIN(sink, 1, true)});
         gFarm.run_and_wait_end();
         
         ffTime(STOP_TIME);
         std::cout << "Time: " << ffTime(GET_TIME) << "\n";
-        
+        std::cout << "Total tasks to the Sink: " << sink->count << "\n"; 
         ABT_finalize();
 		return 0;
     }

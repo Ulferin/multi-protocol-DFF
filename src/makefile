@@ -24,9 +24,6 @@ all: $(TARGETS)
 comm_test.out: test_a2a_comm.cpp $(FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)
 
-tcp_cl_test.out: test_a2a_cl.cpp $(FF_DEPS)
-	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES) -DTCP_TEST
-
 rpc_cl_test.out: test_a2a_cl.cpp $(FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES) -DRPC_TEST
 
@@ -38,6 +35,9 @@ margo_ff_mpi.out: test_ff_mpi.cpp $(FF_DEPS)
 
 mpi_cl_test.out: test_a2a_mpi.cpp $(FF_DEPS)
 	mpicxx $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS)
+
+tcp_cl_test.out: test_a2a_tcp.cpp $(FF_DEPS)
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)
 
 clean:
 	rm -f ./*.o
