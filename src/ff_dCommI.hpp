@@ -5,6 +5,13 @@ the barely necessary functions to receive and ship data in the network. */
 #ifndef FF_DCOMM_I
 #define FF_DCOMM_I
 
+#include <map>
+#include <ff/ff.hpp>
+#include <ff/dff.hpp>
+#include <ff/distributed/ff_network.hpp>
+
+using namespace ff;
+
 class ff_dCommunicator {
 protected:
     static int sendRoutingTable(const int sck, const std::vector<int>& dest){

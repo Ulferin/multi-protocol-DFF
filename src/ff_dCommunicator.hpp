@@ -2,11 +2,13 @@
 #define FF_DCOMM
 
 #include <ff/ff.hpp>
+#include <ff/dff.hpp>
 #include <ff/distributed/ff_network.hpp>
+#include <ff/distributed/ff_batchbuffer.hpp>
 #include <margo.h>
 
-#include "ff_dAreceiver.hpp"
 #include "ff_dCommI.hpp"
+#include "ff_dAreceiver.hpp"
 #include "ff_drpc_types.h"
 #include "ff_margo_utils.hpp"
 

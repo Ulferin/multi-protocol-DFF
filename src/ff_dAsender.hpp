@@ -39,12 +39,13 @@
 #include <ff/distributed/ff_network.hpp>
 #include <ff/distributed/ff_dgroups.hpp>
 
+#include "ff_dCommI.hpp"
+
 #include <margo.h>
 #include <abt.h>
 
 #include "ff_drpc_types.h"
 #include "ff_margo_utils.hpp"
-#include "ff_dCommI.hpp"
 
 using namespace ff;
 

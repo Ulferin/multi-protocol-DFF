@@ -49,9 +49,9 @@
 #include <execution>
 #include <algorithm>
 
+#include "ff_dCommunicator.hpp"
 #include "ff_dAreceiver.hpp"
 #include "ff_dAsender.hpp"
-#include "ff_dCommunicator.hpp"
 
 using namespace ff;
 
@@ -182,15 +182,19 @@ struct Sink : ff_node_t<myTask_t>{
 };
 
 
-struct ForwarderNode : ff_node{ 
-        ForwarderNode(std::function<void(void*, dataBuffer&)> f){
+struct ForwarderNode : ff_node { 
+        ForwarderNode(std::function<bool(void*, dataBuffer&)> f,
+					  std::function<void(void*)> d) {			
             this->serializeF = f;
+			this->freetaskF  = d;
         }
-        ForwarderNode(std::function<void*(dataBuffer&)> f){
+        ForwarderNode(std::function<void*(dataBuffer&,bool&)> f,
+					  std::function<void*(char*,size_t)> a) {
+			this->alloctaskF   = a;
             this->deserializeF = f;
         }
-        void* svc(void* input){return input;}
-};
+        void* svc(void* input){ return input;}
+    };
 
 
 int main(int argc, char*argv[]){
@@ -269,77 +273,50 @@ int main(int argc, char*argv[]){
     ff_a2a a2a;
 
     if (atoi(argv[1]) == 0) {
-        gFarm.add_workers({new WrapperOUT(new Source(ntask), 1, true)});
-        #ifdef TCP_TEST
-        gFarm.add_collector(new ff_dAsender(new ff_dCommTCPS({g1, g2}, "G0", {})));                             //TCP
-        #endif
+        gFarm.add_workers({new WrapperOUT(new Source(ntask), 1, 1, 0, true)});                                              //ORIGINAL
 
-        // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));                                                 //ORIGINAL
-
-        #ifdef RPC_TEST
         gFarm.add_collector(new ff_dAsender(                                                                 //RPC
                 new ff_dCommRPCS({g1,g2}, {&G0toG1_rpc, &G0toG2_rpc}, "G0", {}, false, true), -1, 1));       //RPC
-        #endif
 
         gFarm.run_and_wait_end();
         ABT_finalize();
         return 0;
     } else if (atoi(argv[1]) == 1){
-        #ifdef TCP_TEST
-        gFarm.add_emitter(new ff_dAreceiver(new ff_dCommTCP(g1, true, {0,1}, {{0,0}}, {"G2"}), 2, -1, 1));      //TCP
-        gFarm.add_collector(new ff_dAsender(new ff_dCommTCPS({g2, g3}, "G1", {"G2"})));                         //TCP
-        #endif
-
-        // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}, {0,1}, {"G2"}));                                //ORIGINAL
-        // gFarm.add_collector(new ff_dsenderH({g2,g3}, "G1", {"G2"}));                                         //ORIGINAL
-
-        #ifdef RPC_TEST
         gFarm.add_emitter(new ff_dAreceiver(                                                                 //RPC
             new ff_dCommRPC(g1, true, true, {&G0toG1_rpc, &G2toG1_rpc}, {0,1}, {{0, 0}}, {"G2"}),            //RPC
             2, -1, 1));                                                                                      //RPC
         gFarm.add_collector(new ff_dAsender(                                                                 //RPC
                 new ff_dCommRPCS({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, true, true), -1, 1));    //RPC
-        #endif
 
         gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 
 		auto s = new Lnode(4,0,Lmswait);
-		
-        auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF)), new EmitterAdapter(s, 4, 0, {{0,0}, {1,1}}, true), true, true);
+        auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 4, 0, {{0,0}, {1,1}}, true), true, true);
 
         a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({{0,0}, {1,1}})});
         auto rnode0 = new Rnode(0, Rmswait);
 		auto rnode1 = new Rnode(1, Rmswait);
         a2a.add_secondset<ff_node>({
 									new ff_comb(new CollectorAdapter(rnode0, {0}, true),
-												new WrapperOUT(new ForwarderNode(rnode0->serializeF), 0, 1, true)),
+												new WrapperOUT(new ForwarderNode(rnode0->serializeF, rnode0->freetaskF), 0, 1, 0, true)),
 									new ff_comb(new CollectorAdapter(rnode1, {0}, true),
-												new WrapperOUT(new ForwarderNode(rnode1->serializeF), 1, 1, true)),
+												new WrapperOUT(new ForwarderNode(rnode1->serializeF, rnode1->freetaskF), 1, 1, 0, true)),
 									new SquareBoxRight});  // this box should be the last one!
 
     } else if (atoi(argv[1]) == 2) {
-        #ifdef TCP_TEST
-        gFarm.add_emitter(new ff_dAreceiver(new ff_dCommTCP(g2, true, {2,3}, {{1,0}}, {"G1"}), 2, -1, 1));      //TCP
-        gFarm.add_collector(new ff_dAsender(new ff_dCommTCPS({g1, g3}, "G2", {"G1"})));                         //TCP
-        #endif
-        // gFarm.add_emitter(new ff_dreceiverH(g2, 2, {{1, 0}}, {2,3}, {"G1"}));                                //ORIGINAL
-        // gFarm.add_collector(new ff_dsenderH({g1, g3}, "G2", {"G1"}));                                        //ORIGINAL
-
-        #ifdef RPC_TEST
         gFarm.add_emitter(new ff_dAreceiver(                                                                 //RPC
             new ff_dCommRPC(g2, true, true, {&G0toG2_rpc, &G1toG2_rpc}, {2,3}, {{1, 0}}, {"G1"}),      //RPC
             2, -1, 1));                                                                                      //RPC
         
         gFarm.add_collector(new ff_dAsender(                                                                 //RPC
                 new ff_dCommRPCS({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}, true, true), -1, 1));   //RPC
-        #endif
 
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 
 		auto s = new Lnode(4,1,Lmswait);                                                                           
-		auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF)), new EmitterAdapter(s, 4, 1, {{2,0}, {3,1}}, true), true, true);
+		auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 4, 1, {{2,0}, {3,1}}, true), true, true);
 
         a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(2,0), std::make_pair(3,1)})}, 0, true);
 
@@ -347,21 +324,16 @@ int main(int argc, char*argv[]){
 		auto rnode3 = new Rnode(3, Rmswait);
 		a2a.add_secondset<ff_node>({
 									new ff_comb(new CollectorAdapter(rnode2, {1}, true),
-												new WrapperOUT(new ForwarderNode(rnode2->serializeF), 2, 1, true), true, true),
+												new WrapperOUT(new ForwarderNode(rnode2->serializeF, rnode2->freetaskF), 2, 1, 0, true), true, true),
 									new ff_comb(new CollectorAdapter(rnode3, {1}, true),
-												new WrapperOUT(new ForwarderNode(rnode3->serializeF), 3, 1, true), true, true),
+												new WrapperOUT(new ForwarderNode(rnode3->serializeF, rnode3->freetaskF), 3, 1, 0, true), true, true),
 									new SquareBoxRight   // this box should be the last one!
 			                        }, true);		
         
     } else {
 
         std::string *test_type;
-        #ifdef RPC_TEST
         test_type = new std::string("RPC");
-        #endif
-        #ifdef TCP_TEST
-        test_type = new std::string("TCP");
-        #endif
 
         printf("-- Testing %s communication with \"%s\" --\n", test_type->c_str(), protocol);
         int total_task = ntask * 4;
@@ -374,16 +346,11 @@ int main(int argc, char*argv[]){
         ffTime(START_TIME);
         // gFarm.add_emitter(new ff_dreceiver(g3, 2));                                                  //ORIGINAL
         
-        #ifdef RPC_TEST
         gFarm.add_emitter(new ff_dAreceiver(                                                         //RPC
             new ff_dCommRPC(g3, false, true, {&G1toG3_rpc, &G2toG3_rpc}, {},                         //RPC
                     {std::make_pair(0, 0)}, {}),                                                     //RPC
             2, -1, 1));                                                                             //RPC
-        #endif
 
-        #ifdef TCP_TEST
-        gFarm.add_emitter(new ff_dAreceiver(new ff_dCommTCP(g3, false),2, -1, 1));                      
-		#endif
 		Sink *sink = new Sink(verbose);	
 		gFarm.add_workers({new WrapperIN(sink, 1, true)});
         gFarm.run_and_wait_end();
