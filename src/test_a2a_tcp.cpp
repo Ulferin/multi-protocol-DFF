@@ -22,6 +22,7 @@
 #include "ff_dCommComp.hpp"
 #include "ff_dAreceiverComp.hpp"
 #include "ff_dAsenderComp.hpp"
+#include "ff_dCommMaster.hpp"
 
 using namespace ff;
 std::mutex mtx;
@@ -130,7 +131,9 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
-        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommTCP(g1, 2, {{0, 0}}), 2));
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g1, 2, {{0, 0}})}}, {{0, 0}});
+
+        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
         // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}));
         gFarm.add_collector(new ff_dAsenderH(new ff_dCommTCPS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")));
         // gFarm.add_collector(new ff_dsenderH({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1"));
@@ -146,7 +149,9 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
-        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommTCP(g2, 2, {{1, 0}}), 2));
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g2, 2, {{1, 0}})}}, {{1, 0}});
+
+        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
         // gFarm.add_emitter(new ff_dreceiverH(g2, 2, {{1, 0}}));
         gFarm.add_collector(new ff_dAsenderH(new ff_dCommTCPS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")));
         // gFarm.add_collector(new ff_dsenderH({{ChannelType::INT, g1}, {ChannelType::FWD, g3}}, &rt, "G2"));
@@ -168,7 +173,8 @@ int main(int argc, char*argv[]){
 		
         
     } else {
-        gFarm.add_emitter(new ff_dAreceiver(new ff_dCommTCP(g3, 2), 2));
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g3, 2)}});
+        gFarm.add_emitter(new ff_dAreceiver(recMaster, 2));
         // gFarm.add_emitter(new ff_dreceiver(g3, 2));
          gFarm.add_workers({new WrapperIN(new StringPrinter(), 1, true)});
 

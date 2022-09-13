@@ -26,3 +26,4 @@
 *.toc
 *CMakeFiles
 Examples/*
+hostfile

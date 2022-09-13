@@ -14,7 +14,9 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/polymorphic.hpp>
 
-#include "ff_dCompI.hpp"
+// #include "ff_dCompI.hpp"
+// #include "ff_dCommMaster.hpp"
+#include "ff_dCommMasterI.hpp"
 
 
 
@@ -25,7 +27,7 @@ class ff_dAreceiver: public ff_monode_t<message_t> {
 
 public:
 
-    ff_dAreceiver(ff_dComp* communicator, size_t input_channels,
+    ff_dAreceiver(ff_dReceiverMasterI* communicator, size_t input_channels,
         int coreid = -1, int busy = 0, int expected=-1):
             communicator(communicator), input_channels(input_channels),
             coreid(coreid), busy(busy), expected(expected) {}
@@ -41,7 +43,7 @@ public:
 
 
     message_t *svc(message_t* task) { 
-        if(communicator->comm_listen() == -1) {
+        if(communicator->wait_components() == -1) {
             error("Listening for messages\n");
         }
         return this->EOS;
@@ -69,7 +71,7 @@ public:
     }
 
 protected:
-    ff_dComp*   communicator;
+    ff_dReceiverMasterI*   communicator;
     size_t              input_channels;
     int                 coreid;
     int                 busy;
@@ -88,7 +90,7 @@ protected:
     int next_rr_destination = 0;
 
 public:
-    ff_dAreceiverH(ff_dComp* communicator, size_t input_channels,
+    ff_dAreceiverH(ff_dReceiverMasterI* communicator, size_t input_channels,
         int coreid = -1, int busy = 0, int expected=-1)
 		: ff_dAreceiver(communicator, input_channels, coreid, busy, expected)  {}
 

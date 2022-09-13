@@ -480,10 +480,7 @@ public:
         receiver = (ff_dAreceiver*)data;
 
         this->_init();
-    }
 
-    virtual int comm_listen() {
-        fd_set set, tmpset;
         // intialize both sets (master, temp)
         FD_ZERO(&set);
         FD_ZERO(&tmpset);
@@ -492,15 +489,20 @@ public:
         FD_SET(this->listen_sck, &set);
 
         // hold the greater descriptor
-        int fdmax = this->listen_sck; 
+        fdmax = this->listen_sck;
+    }
 
-        while(neos < input_channels){
+    //FIXME: da aggiungere return 1 per GO_ON, 0 per STOP e -1 per ERR
+    virtual int comm_listen() {
+        if (neos < input_channels) {
+        // while(neos < input_channels){
             // copy the master set to the temporary
             tmpset = set;
+            struct timeval wait_time = {.tv_sec=0, .tv_usec=100000};
 
-            switch(select(fdmax+1, &tmpset, NULL, NULL, NULL)){
+            switch(select(fdmax+1, &tmpset, NULL, NULL, &wait_time)){
                 case -1: error("Error on selecting socket\n"); return -1;
-                case  0: continue;
+                case  0: {printf("Timed out!\n"); return 1;}
             }
 
             for(int idx=0; idx <= fdmax; idx++){
@@ -512,12 +514,10 @@ public:
                         } else {
                             FD_SET(connfd, &set);
                             if(connfd > fdmax) fdmax = connfd;
-
                             this->handshakeHandler(connfd);
                         }
-                        continue;
+                        return 1;
                     }
-                    
                     if (this->handleBatch(idx) < 0){
                         close(idx);
                         FD_CLR(idx, &set);
@@ -534,6 +534,7 @@ public:
 					
                 }
             }
+            return 1;
         }
         
         return 0;
