@@ -28,8 +28,10 @@ public:
         receiver = (ff_dAreceiver*)data;
 
         // NOTE: probabilmente input_channels si può rimuovere e fornire come parametro il numero di connessioni attese per questo communicator
+        printf("Starting handshake with MPI\n");
         for(size_t i = 0; i < input_channels; i++)
             handshakeHandler();
+        printf("Ending handshake with MPI\n");
         // FIXME: si può togliere dato che adesso lo inizializziamo dentro la get
         this->internalConnections = std::count_if(std::begin(rank2ChannelType),
                                             std::end  (rank2ChannelType),
@@ -38,28 +40,34 @@ public:
 
     virtual int comm_listen() {
         MPI_Status status;
-        while(neos < input_channels){
-
+        if(neos < input_channels){
+            // printf("[MPI] Listening\n");
             int headersLen;
-            MPI_Probe(MPI_ANY_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &status);
+            int flag = 0;
+            // MPI_Probe(MPI_ANY_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &status);
+            MPI_Iprobe(MPI_ANY_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &flag, &status);
+            if(flag == 0)
+                return 1;
             MPI_Get_count(&status, MPI_LONG, &headersLen);
             long headers[headersLen];
-
+            int rank = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+            printf("Receiving something %d\n", rank);
             if (MPI_Recv(headers, headersLen, MPI_LONG, status.MPI_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &status) != MPI_SUCCESS)
                 error("Error on Recv Receiver primo in alto\n");
             bool feedback = ChannelType::FBK == rank2ChannelType[status.MPI_SOURCE];
             assert(headers[0]*3+1 == headersLen);
+            printf("Done receiving something %d\n", rank);
 
             size_t sz = headers[3];
 
             if (sz == 0){
                 if (headers[2] == -2){
                     receiver->registerLogicalEOS(headers[1]);
-                    continue;
+                    return 1;
                 }
                 neos++;
                 receiver->registerEOS(rank2ChannelType[status.MPI_SOURCE] == ChannelType::INT);
-                continue;
+                return 1;
             }
 
             char* buff = new char[sz];
@@ -72,6 +80,7 @@ public:
             out->feedback = feedback;
 
             receiver->forward(out, rank2ChannelType[status.MPI_SOURCE] == ChannelType::INT);
+            return 1;
         }
         
         return 0;
@@ -387,7 +396,7 @@ protected:
         }
         
         sck2ChannelType[sck] = t;
-
+        std::cout << "Done handshake with " << groupName << "\n";
         return 0; //this->sendRoutingTable(sck, reachableDestinations);
     }
 
@@ -502,7 +511,7 @@ public:
 
             switch(select(fdmax+1, &tmpset, NULL, NULL, &wait_time)){
                 case -1: error("Error on selecting socket\n"); return -1;
-                case  0: return 1;
+                case  0: {std::cout << "Timeout " << handshakeAddr.groupName << "\n"; return 1;}
             }
 
             for(int idx=0; idx <= fdmax; idx++){
@@ -743,7 +752,7 @@ public:
 
         for (auto& [ct, ep] : this->destEndpoints)
         {
-            std::cout << "Trying to connect to: " << ep.address << "\n";
+            std::cout << gName << " trying to connect to: " << ep.address << " gName: " << ep.groupName << "\n";
             int sck = tryConnect(ep);
             if (sck <= 0) {
                 error("Error on connecting!\n");
@@ -785,6 +794,7 @@ public:
             }
             FD_SET(sck, &set);
             if(sck > fdmax) fdmax = sck;
+            std::cout << gName << " done connecting to: " << ep.address << " gName: " << ep.groupName << "\n";
         }
 
         // we can erase the list of endpoints

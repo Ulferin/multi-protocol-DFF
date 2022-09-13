@@ -24,10 +24,10 @@
 #include <map>
 #include <mpi.h>
 
-#include "ff_dCompI.hpp"
 #include "ff_dCommComp.hpp"
-#include "ff_dAsenderComp.hpp"
 #include "ff_dAreceiverComp.hpp"
+#include "ff_dAsenderComp.hpp"
+#include "ff_dCommMaster.hpp"
 
 using namespace ff;
 std::mutex mtx;
@@ -131,9 +131,21 @@ int main(int argc, char*argv[]){
     ff_endpoint g3(3);
     g3.groupName = "G3";
 
+    ff_endpoint g1_tcp("127.0.0.1", 8001);
+    g1_tcp.groupName = "G1";
+
+    ff_endpoint g2_tcp("127.0.0.1", 8002);
+    g2_tcp.groupName = "G2";
+
+    ff_endpoint g3_tcp("127.0.0.1", 8003);
+    g3_tcp.groupName = "G3";
+
     ff_farm gFarm;
     ff_a2a a2a;
     std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt;
+    std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt1;
+    std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt2;
+    std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt3;
     if (myrank == 0){
         rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector({0});
         rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector({1});
@@ -141,7 +153,10 @@ int main(int argc, char*argv[]){
         gFarm.add_collector(new ff_dsenderMPI({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt,"G0"));
         #else
         // gFarm.add_collector(new ff_dsenderMPI({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt,"G0"));
-        gFarm.add_collector(new ff_dAsender(new ff_dCommMPIS({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt, "G0")));
+        // ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1_tcp.groupName, g2_tcp.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g1_tcp},{ChannelType::FWD, g2_tcp}}, &rt, "G0")}}, &rt);
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g2.groupName}, new ff_dCommMPIS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, &rt, "G0")}}, &rt);
+        gFarm.add_collector(new ff_dAsender(sendMaster));
+        // gFarm.add_collector(new ff_dAsender(new ff_dCommMPIS({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt, "G0")));
         #endif
 
         gFarm.add_workers({new WrapperOUT(new RealSource(ntask), 0, 1, 0, true)});
@@ -153,14 +168,23 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
+        rt2[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
+        rt3[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
+
         #ifdef ORIGINALREC
         gFarm.add_emitter(new ff_dreceiverHMPI(2, {{0, 0}}));
         gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1"));
         #else
         // gFarm.add_emitter(new ff_dreceiverHMPI(2, {{0, 0}}));
-        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommMPI(2, {{0,0}}), 2));
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommMPI(2, {{0, 0}})}}, {{0, 0}});
+        // ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g1_tcp, 1, {{0, 0}})},{false, new ff_dCommMPI(1, {{0, 0}})}}, {{0, 0}});
+        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
+        // gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommMPI(2, {{0,0}}), 2));
         // gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1"));
-        gFarm.add_collector(new ff_dAsenderH(new ff_dCommMPIS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")));
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g2.groupName, g3.groupName}, new ff_dCommMPIS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")}}, &rt);
+        // ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g3.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g3_tcp}}, &rt3, "G1")}, {{g2.groupName}, new ff_dCommMPIS({{ChannelType::INT, g2}}, &rt2, "G1")}}, &rt);
+        gFarm.add_collector(new ff_dAsenderH(sendMaster));
+        // gFarm.add_collector(new ff_dAsenderH(new ff_dCommMPIS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")));
         #endif
 
 		auto s = new Source(2,0);
@@ -174,14 +198,23 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
+        rt1[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
+        rt3[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
+
         #ifdef ORIGINALREC
         gFarm.add_emitter(new ff_dreceiverHMPI(2, {{1, 0}}));
         gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g1}, {ChannelType::FWD, g3}}, &rt, "G2"));
         #else
         // gFarm.add_emitter(new ff_dreceiverHMPI(2, {{1, 0}}));
-        gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommMPI(2, {{1,0}}), 2));
+        // ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g2_tcp, 1, {{1, 0}})},{false, new ff_dCommMPI(1, {{1, 0}})}}, {{1, 0}});
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommMPI(2, {{1, 0}})}}, {{1, 0}});
+        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
+        // gFarm.add_emitter(new ff_dAreceiverH(new ff_dCommMPI(2, {{1,0}}), 2));
         // gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g1}, {ChannelType::FWD, g3}}, &rt, "G2"));
-        gFarm.add_collector(new ff_dAsenderH(new ff_dCommMPIS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")));
+        // ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g3.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g3_tcp}}, &rt3, "G2")}, {{g1.groupName}, new ff_dCommMPIS({{ChannelType::INT, g1}}, &rt1, "G2")}}, &rt);
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g3.groupName}, new ff_dCommMPIS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")}}, &rt);
+        gFarm.add_collector(new ff_dAsenderH(sendMaster));
+        // gFarm.add_collector(new ff_dAsenderH(new ff_dCommMPIS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")));
         #endif
 
 		gFarm.cleanup_emitter();
@@ -207,7 +240,10 @@ int main(int argc, char*argv[]){
         gFarm.add_emitter(new ff_dreceiverMPI(2));
         #else
         // gFarm.add_emitter(new ff_dreceiverMPI(2));
-        gFarm.add_emitter(new ff_dAreceiver(new ff_dCommMPI(2), 2));
+        // ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g3_tcp, 2)}});
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommMPI(2)}});
+        gFarm.add_emitter(new ff_dAreceiver(recMaster, 2));
+        // gFarm.add_emitter(new ff_dAreceiver(new ff_dCommMPI(2), 2));
         #endif
 
         gFarm.add_workers({new WrapperIN(new StringPrinter(), 1, true)});
