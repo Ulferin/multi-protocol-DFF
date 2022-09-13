@@ -502,7 +502,7 @@ public:
 
             switch(select(fdmax+1, &tmpset, NULL, NULL, &wait_time)){
                 case -1: error("Error on selecting socket\n"); return -1;
-                case  0: {printf("Timed out!\n"); return 1;}
+                case  0: return 1;
             }
 
             for(int idx=0; idx <= fdmax; idx++){
@@ -771,6 +771,8 @@ public:
             }));
 
             // compute the routing table!
+            // NOTE: since rt is only used here, it could become a parameter
+            //      from the Master rather than being a member of this class
             for(auto& [k,v] : *rt){
                 if (k.first != ep.groupName) continue;
                 for(int dest : v)

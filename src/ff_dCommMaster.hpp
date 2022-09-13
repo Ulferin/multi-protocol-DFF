@@ -83,4 +83,75 @@ public:
 };
 
 
+class ff_dSenderMaster : public ff_dSenderMasterI {
+
+protected:
+    std::vector<std::pair<std::set<std::string>, ff_dCompS*>> components;
+    std::map<std::pair<std::string, ChannelType>, std::vector<int>> *rt;
+    std::map<std::pair<int, ff::ChannelType>, ff_dCompS*>        componentsMap;
+    int next_component = 0;
+    int received = 0;
+    std::map<std::pair<int, ff::ChannelType>, ff_dCompS*>::iterator it;
+public:
+    ff_dSenderMaster(
+        std::vector<std::pair<std::set<std::string>, ff_dCompS*>> components,
+        std::map<std::pair<std::string, ChannelType>, std::vector<int>> *rt)
+        : components(std::move(components)), rt(rt) {}
+
+
+    int init() {
+
+        // Build the association between task->chid and components.
+        for(auto& [groups, component] : components) {
+            for(auto& [k,v] : *rt){
+                if (!groups.contains(k.first)) continue;
+                std::cout << componentsMap.size() << "\n";
+                for(int dest : v)
+                    componentsMap[std::make_pair(dest, k.second)] = component;
+            }
+        }
+        //FIXME: qui costruire la RT da passare all'handshake dei singoli components
+        for(auto& [groups, component] : components) {
+            if(component->handshake() == -1) {
+                error("Handhsake error.\n");
+                return -1;
+            }
+        }
+
+        it = componentsMap.begin();
+
+        return 0;
+    }
+
+    int send(message_t* task, bool external) {
+        received++;
+        ff_dCompS* component;
+        ff::ChannelType cht = external ? (task->feedback ? ChannelType::FBK : ChannelType::FWD) : ff::ChannelType::INT;
+        if(it == componentsMap.end()) it = componentsMap.begin();
+        if(task->chid == -1) {
+            component = it->second;
+            it++;
+        }
+        else component = componentsMap[{task->chid, cht}];
+        if(component->send(task, external) == -1)
+            return -1;
+        
+        else return 0;
+    }
+
+    void notify(ssize_t id, bool external) {
+        for(auto& [groups, component] : components) {
+            component->notify(id, external);
+        }
+    }
+
+    void finalize() {
+        printf("[MASTER-SENDER] Received: %d\n", received);
+        for(auto& [groups, component] : components) {
+            component->finalize();
+        }
+    }
+
+
+};
 #endif //FF_DCOMM_MASTER

@@ -31,6 +31,8 @@ public:
     }
 
 protected:
+    //FIXME: l'input_channels nel caso di gestione di più receiver è il numero di
+    //      connessioni in entrata su quel componente
     ff_dComp(size_t input_channels,
         std::map<int, int> routingTable = {std::make_pair(0,0)})
             : input_channels(input_channels), routingTable(routingTable) {}

@@ -16,5 +16,14 @@ public:
     virtual size_t getInternalConnections() = 0;
 };
 
+class ff_dSenderMasterI {
+
+public:
+    virtual int init() = 0;
+    virtual int send(message_t* task, bool external) = 0;
+    virtual void notify(ssize_t id, bool external) = 0;
+    virtual void finalize() = 0;
+};
+
 
 #endif

@@ -38,16 +38,17 @@
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
 #include <ff/distributed/ff_dgroups.hpp>
-#include "ff_dCompI.hpp"
+// #include "ff_dCompI.hpp"
+#include "ff_dCommMasterI.hpp"
 
 using namespace ff;
 
 class ff_dAsender: public ff_minode_t<message_t> {
 public:
-    ff_dAsender(ff_dCompS* communicator, int coreid = -1, int busy = 1):
+    ff_dAsender(ff_dSenderMasterI* communicator, int coreid = -1, int busy = 1):
             communicator(communicator), coreid(coreid), busy(busy) {
         
-        this->communicator->init();
+        // this->communicator->init();
     }
 
 
@@ -55,7 +56,7 @@ public:
 		if (coreid!=-1)
 			ff_mapThreadToCpu(coreid);
 		
-        if (communicator->handshake() == -1) {
+        if (communicator->init() == -1) {
             error("Handhsake error.\n");
             return -1;
         }
@@ -88,7 +89,7 @@ public:
 protected:
 
     // From ff_dsender
-    ff_dCompS*                  communicator;
+    ff_dSenderMasterI*                  communicator;
     size_t                              neos=0;
     int                                 nextExternal = 0, nextInternal = 0;
     int                                 coreid;
@@ -108,7 +109,7 @@ bool squareBoxEOS = false;
 
 public:
 
-    ff_dAsenderH(ff_dCompS* communicator, int coreid = -1, int busy = 1):
+    ff_dAsenderH(ff_dSenderMasterI* communicator, int coreid = -1, int busy = 1):
             ff_dAsender(communicator, coreid, busy) {}
 
     message_t* svc(message_t* task) {

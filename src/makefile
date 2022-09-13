@@ -15,7 +15,8 @@ LDLIBS = -pthread -lrt -lmargo -labt -lmercury -ljson-c
 DEBUG = 
 
 TARGETS = comm_test.out tcp_cl_test.out rpc_cl_test.out pipe_cl_test.out mpi_cl_test.out
-FF_DEPS = ff_dAreceiver.hpp ff_dAsender.hpp ff_dCommunicator.hpp ff_drpc_types.h ff_margo_utils.hpp ff_dCommI.hpp
+MARGO_FF_DEPS = ff_dAreceiver.hpp ff_dAsender.hpp ff_dCommunicator.hpp ff_drpc_types.h ff_margo_utils.hpp ff_dCommI.hpp
+FF_DEPS = ff_dAreceiverComp.hpp ff_dAsenderComp.hpp ff_dCommComp.hpp ff_dCommMaster.hpp ff_dCommMasterI.hpp ff_dCompI.hpp
 
 .PHONY = all clean cleanall
 

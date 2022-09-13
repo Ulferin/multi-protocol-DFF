@@ -48,7 +48,6 @@ struct Source : ff_monode_t<std::string>{
         for(int i = 0; i < numWorker; i++)
 			ff_send_out_to(new std::string("Task" + std::to_string(i) + " generated from " + std::to_string(generatorID) + " for " + std::to_string(i)), i);
         
-        std::cout << "Source generated all task sending now EOS!" << std::endl;
         return GO_ON;
     }
 };
@@ -122,7 +121,8 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector({0}); // NOTE: these are probably the nodes specified in the old receiver. Basically
         rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector({1}); // NOTE: they are what the sender should have received from the receiver
         // gFarm.add_collector(new ff_dsender({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt,"G0"));
-        gFarm.add_collector(new ff_dAsender(new ff_dCommTCPS({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt, "G0")));
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g2.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, &rt, "G0")}}, &rt);
+        gFarm.add_collector(new ff_dAsender(sendMaster));
         gFarm.add_workers({new WrapperOUT(new RealSource(ntask), 0, 1, 0, true)});
 
         gFarm.run_and_wait_end();
@@ -132,10 +132,11 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
         ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g1, 2, {{0, 0}})}}, {{0, 0}});
-
         gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
         // gFarm.add_emitter(new ff_dreceiverH(g1, 2, {{0, 0}}));
-        gFarm.add_collector(new ff_dAsenderH(new ff_dCommTCPS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")));
+
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g2.groupName, g3.groupName}, new ff_dCommTCPS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")}}, &rt);
+        gFarm.add_collector(new ff_dAsenderH(sendMaster));
         // gFarm.add_collector(new ff_dsenderH({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1"));
 
 		auto s = new Source(2,0);
@@ -150,10 +151,11 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
         ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g2, 2, {{1, 0}})}}, {{1, 0}});
-
         gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
         // gFarm.add_emitter(new ff_dreceiverH(g2, 2, {{1, 0}}));
-        gFarm.add_collector(new ff_dAsenderH(new ff_dCommTCPS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")));
+        
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g3.groupName}, new ff_dCommTCPS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")}}, &rt);
+        gFarm.add_collector(new ff_dAsenderH(sendMaster));
         // gFarm.add_collector(new ff_dsenderH({{ChannelType::INT, g1}, {ChannelType::FWD, g3}}, &rt, "G2"));
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
