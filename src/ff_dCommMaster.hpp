@@ -92,6 +92,19 @@ protected:
     int next_component = 0;
     int received = 0;
     std::map<std::pair<int, ff::ChannelType>, ff_dCompS*>::iterator it;
+
+    ff_dCompS* getNextComponent(bool external) {
+        ff_dCompS* component;
+        // if(it == componentsMap.end()) it = componentsMap.begin();
+        it = componentsMap.begin();
+        while(it != componentsMap.end()) {
+            component = it->second;
+            if(component->haveConnType(external)) break;
+            it++;
+        }
+        return component;
+    }
+
 public:
     ff_dSenderMaster(
         std::vector<std::pair<std::set<std::string>, ff_dCompS*>> components,
@@ -105,7 +118,6 @@ public:
         for(auto& [groups, component] : components) {
             for(auto& [k,v] : *rt){
                 if (!groups.contains(k.first)) continue;
-                std::cout << componentsMap.size() << "\n";
                 for(int dest : v)
                     componentsMap[std::make_pair(dest, k.second)] = component;
             }
@@ -127,15 +139,13 @@ public:
         received++;
         ff_dCompS* component;
         ff::ChannelType cht = external ? (task->feedback ? ChannelType::FBK : ChannelType::FWD) : ff::ChannelType::INT;
-        if(it == componentsMap.end()) it = componentsMap.begin();
         if(task->chid == -1) {
-            component = it->second;
-            it++;
+            component = getNextComponent(external);
         }
         else component = componentsMap[{task->chid, cht}];
         if(component->send(task, external) == -1)
             return -1;
-        
+
         else return 0;
     }
 

@@ -62,6 +62,10 @@ public:
 
     virtual void notify(ssize_t id, bool external) = 0;
 
+    bool haveConnType(bool external) {
+        return external ? haveExternal : haveInternal;
+    }
+
 protected:
     ff_dCompS(std::pair<ChannelType, ff_endpoint> destEndpoint,
         precomputedRT_t* rt, std::string gName = "",
@@ -89,6 +93,8 @@ protected:
     fd_set                                              set, tmpset;
     int                                                 fdmax = -1;
     std::vector<int>                                    socks; 
+
+    bool haveExternal=false, haveInternal=false;
 };
 
 #endif

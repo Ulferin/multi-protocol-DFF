@@ -2,16 +2,17 @@ CXX = g++-10
 CXXFLAGS = -Wall -g -O3 -std=c++20 -fno-inline-functions
 
 # IMPORTANT: change these according to the installation path of Margo-related libraries
-INSTALL_PATH = /usr/local/lib # ${HOME}/install/lib
-INSTALL_PATH64 = /home/federico/install/lib64
-INCLUDE_PATH = /usr/local/include # ${HOME}/install/include
+INSTALL_PATH = ${HOME}/install/lib
+INSTALL_PATH64 = ${HOME}/install/lib64
+INCLUDE_PATH = ${HOME}/install/include
 
 FF_ROOT = ${HOME}/includes/fastflow/
 CEREAL_ROOT = ${HOME}/includes/cereal-1.3.2/include/
 DEFINES = -DDFF_EXCLUDE_MPI -DABT_MEM_MAX_NUM_STACKS=8 # the latter is needed for the UCX plugin in Margo
 
 LDFLAGS = -L$(INSTALL_PATH) -L$(INSTALL_PATH64) -Wl,-rpath,$(INSTALL_PATH) -Wl,-rpath,$(INSTALL_PATH64) -I${FF_ROOT} -I$(CEREAL_ROOT) -I$(INCLUDE_PATH)
-LDLIBS = -pthread -lrt -lmargo -labt -lmercury -ljson-c
+LDLIBS_MARGO = -pthread -lrt -lmargo -labt -lmercury -ljson-c
+LDLIBS = -pthread
 DEBUG = 
 
 TARGETS = comm_test.out tcp_cl_test.out rpc_cl_test.out pipe_cl_test.out mpi_cl_test.out
@@ -25,8 +26,8 @@ all: $(TARGETS)
 comm_test.out: test_a2a_comm.cpp $(FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)
 
-rpc_cl_test.out: test_a2a_cl.cpp $(FF_DEPS)
-	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES) -DRPC_TEST
+rpc_cl_test.out: test_a2a_cl.cpp $(MARGO_FF_DEPS)
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS_MARGO) $(DEFINES) -DRPC_TEST
 
 pipe_cl_test.out: test_pipe.cpp $(FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES) -DRPC_TEST

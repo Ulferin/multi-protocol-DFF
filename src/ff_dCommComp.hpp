@@ -291,6 +291,8 @@ public:
         for(auto& [ct, ep]: this->destEndpoints){
             int rank = ep.getRank();
             bool isInternal = ct == ChannelType::INT;
+            haveInternal = haveInternal || isInternal;
+            haveExternal = haveExternal || !isInternal;
             if (isInternal) 
                 internalRanks.push_back(rank);
             else
@@ -759,6 +761,8 @@ public:
                 return -1;
             }
             bool isInternal = ct == ChannelType::INT;
+            haveInternal = haveInternal || isInternal;
+            haveExternal = haveExternal || !isInternal;
             if(isInternal) internalSockets.push_back(sck);
             else socks.push_back(sck);
 
