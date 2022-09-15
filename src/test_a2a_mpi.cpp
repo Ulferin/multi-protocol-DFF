@@ -122,10 +122,10 @@ int main(int argc, char*argv[]){
     int myrank;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-    ff_endpoint g1(1);
+    ff_endpoint g1(0);
     g1.groupName = "G1";
 
-    ff_endpoint g2(2);
+    ff_endpoint g2(1);
     g2.groupName = "G2";
 
     ff_endpoint g3(3);
@@ -143,14 +143,11 @@ int main(int argc, char*argv[]){
     ff_farm gFarm;
     ff_a2a a2a;
     std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt;
-    std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt1;
-    std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt2;
-    std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt3;
-    if (myrank == 0){
+    if (myrank == 4){
         rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector({0});
         rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector({1});
         
-        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1_tcp.groupName, g2_tcp.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g1_tcp},{ChannelType::FWD, g2_tcp}}, &rt, "G0")}}, &rt);
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1_tcp.groupName, g2_tcp.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g1_tcp},{ChannelType::FWD, g2_tcp}}, "G0")}}, &rt);
         // ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g2.groupName}, new ff_dCommMPIS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, &rt, "G0")}}, &rt);
         
         gFarm.add_collector(new ff_dAsender(sendMaster));
@@ -160,17 +157,14 @@ int main(int argc, char*argv[]){
         gFarm.run_and_wait_end();
         if (MPI_Finalize() != MPI_SUCCESS) abort();
         return 0;
-    } else if (myrank == 1){
+    } else if (myrank == 0){
         rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
-        rt2[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
-        rt3[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
-
         // ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommMPI(2, {{0, 0}})}}, {{0, 0}});
-        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommMPI(1, {{0, 0}})},{false, new ff_dCommTCP(g1_tcp, 1, {{0, 0}})}}, {{0, 0}});
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommMPI(1),new ff_dCommTCP(g1_tcp, 1)}, {{0, 0}});
         // ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g2.groupName, g3.groupName}, new ff_dCommMPIS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")}}, &rt);
-        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g3.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g3_tcp}}, &rt3, "G1")}, {{g2.groupName}, new ff_dCommMPIS({{ChannelType::INT, g2}}, &rt2, "G1")}}, &rt);
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g3.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g3_tcp}}, "G1")}, {{g2.groupName}, new ff_dCommMPIS({{ChannelType::INT, g2}}, "G1")}}, &rt);
         
         gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
         gFarm.add_collector(new ff_dAsenderH(sendMaster));
@@ -182,16 +176,13 @@ int main(int argc, char*argv[]){
         auto sink = new Sink(0);
         a2a.add_secondset<ff_node>({new ff_comb(new CollectorAdapter(sink, {0}, true), new WrapperOUT(new ForwarderNode(sink->serializeF, sink->freetaskF), 0, 1, 0, true)), new SquareBoxRight});
 
-    } else if (myrank == 2) {
+    } else if (myrank == 1) {
         rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
-        rt1[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
-        rt3[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
-
-        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommMPI(1, {{1, 0}})},{false, new ff_dCommTCP(g2_tcp, 1, {{1, 0}})}}, {{1, 0}});
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommMPI(1),new ff_dCommTCP(g2_tcp, 1)}, {{1, 0}});
         // ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommMPI(2, {{1, 0}})}}, {{1, 0}});
-        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g3.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g3_tcp}}, &rt3, "G2")}, {{g1.groupName}, new ff_dCommMPIS({{ChannelType::INT, g1}}, &rt1, "G2")}}, &rt);
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g3.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g3_tcp}}, "G2")}, {{g1.groupName}, new ff_dCommMPIS({{ChannelType::INT, g1}}, "G2")}}, &rt);
         // ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g3.groupName}, new ff_dCommMPIS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")}}, &rt);
         
         gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
@@ -214,9 +205,9 @@ int main(int argc, char*argv[]){
 
 		
         
-    } else {
+    } else if(myrank == 5) {
         
-        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g3_tcp, 2)}});
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommTCP(g3_tcp, 2)});
         // ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommMPI(2)}});
 
         gFarm.add_emitter(new ff_dAreceiver(recMaster, 2));

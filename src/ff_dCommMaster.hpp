@@ -14,18 +14,18 @@
 class ff_dReceiverMaster: public ff_dReceiverMasterI {
 
 protected:
-    std::vector<std::pair<bool, ff_dComp*>>      components;
-    std::map<int, int>                          routingTable;
-    bool                                        end = false;
+    std::vector<ff_dComp*>      components;
+    std::map<int, int>          routingTable;
+    bool                        end = false;
 
 public:
-    ff_dReceiverMaster(std::vector<std::pair<bool, ff_dComp*>> components,
+    ff_dReceiverMaster(std::vector<ff_dComp*> components,
         std::map<int, int> routingTable = {std::make_pair(0,0)})
           :components(std::move(components)), routingTable(routingTable){}
 
     void init(ff_monode_t<message_t>* receiver) {
         // First initialize receivers in order to allow them to handle handshakes        
-        for (auto &[fin, component] : components) {
+        for (auto &component : components) {
             component->init(receiver);
         }      
     }
@@ -39,9 +39,13 @@ public:
      *   "active" receivers and we update the general condition. 
     */
     int wait_components() {
+        std::vector<std::pair<bool, ff_dComp*>> listeningComponents;
+        for (auto &&component : components)
+            listeningComponents.push_back(std::make_pair(false, component));
+        
         while(!end) {
             end = true;
-            for (auto &[fin, component] : components) {
+            for (auto &[fin, component] : listeningComponents) {
                 end = end && fin;
 
                 if(!fin) {
@@ -61,7 +65,7 @@ public:
     }
 
     void finalize() {
-        for(auto &[fin, component] : components) {
+        for(auto &component : components) {
             component->finalize();
         }
     }
@@ -72,7 +76,7 @@ public:
 
     size_t getInternalConnections() {
         size_t internalConn = 0;
-        for(auto &[fin, component] : components) {
+        for(auto &component : components) {
             internalConn += component->getInternalConnections();
         }
 
@@ -87,11 +91,12 @@ class ff_dSenderMaster : public ff_dSenderMasterI {
 
 protected:
     std::vector<std::pair<std::set<std::string>, ff_dCompS*>> components;
-    std::map<std::pair<std::string, ChannelType>, std::vector<int>> *rt;
+    precomputedRT_t* rt;
     std::map<std::pair<int, ff::ChannelType>, ff_dCompS*>        componentsMap;
     int next_component = 0;
     int received = 0;
     std::map<std::pair<int, ff::ChannelType>, ff_dCompS*>::iterator it;
+    std::vector<std::pair<precomputedRT_t*, ff_dCompS*>> routedComponents;
 
     ff_dCompS* getNextComponent(bool external) {
         ff_dCompS* component;
@@ -108,7 +113,7 @@ protected:
 public:
     ff_dSenderMaster(
         std::vector<std::pair<std::set<std::string>, ff_dCompS*>> components,
-        std::map<std::pair<std::string, ChannelType>, std::vector<int>> *rt)
+        precomputedRT_t* rt)
         : components(std::move(components)), rt(rt) {}
 
 
@@ -116,15 +121,18 @@ public:
 
         // Build the association between task->chid and components.
         for(auto& [groups, component] : components) {
+            precomputedRT_t* tempRout = new precomputedRT_t;
             for(auto& [k,v] : *rt){
                 if (!groups.contains(k.first)) continue;
+                (*tempRout)[k] = v;
                 for(int dest : v)
                     componentsMap[std::make_pair(dest, k.second)] = component;
             }
+            routedComponents.push_back(std::make_pair(tempRout, component));
         }
-        //FIXME: qui costruire la RT da passare all'handshake dei singoli components
-        for(auto& [groups, component] : components) {
-            if(component->handshake() == -1) {
+
+        for(auto& rtComp : routedComponents) {
+            if(rtComp.second->handshake(rtComp.first) == -1) {
                 error("Handhsake error.\n");
                 return -1;
             }

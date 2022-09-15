@@ -21,10 +21,6 @@ public:
     virtual void init(ff_monode_t<message_t>*) = 0;
     virtual int comm_listen() = 0;
     virtual void finalize() = 0;
-    
-    int getChannelID(int chid) {
-        return this->routingTable[chid];
-    }
 
     virtual size_t getInternalConnections(){
         return this->internalConnections;
@@ -33,12 +29,10 @@ public:
 protected:
     //FIXME: l'input_channels nel caso di gestione di più receiver è il numero di
     //      connessioni in entrata su quel componente
-    ff_dComp(size_t input_channels,
-        std::map<int, int> routingTable = {std::make_pair(0,0)})
-            : input_channels(input_channels), routingTable(routingTable) {}
+    ff_dComp(size_t input_channels)
+            : input_channels(input_channels) {}
 
     size_t                  input_channels;
-    std::map<int, int>      routingTable;
     bool                    internal;
     std::vector<int>        internalDestinations;
     std::set<std::string>   internalGroupsNames;
@@ -58,7 +52,7 @@ public:
     virtual int send(message_t* task, bool external) = 0;
     virtual void finalize() = 0;
 
-    virtual int handshake() = 0;
+    virtual int handshake(precomputedRT_t* rt) = 0;
 
     virtual void notify(ssize_t id, bool external) = 0;
 
@@ -68,22 +62,21 @@ public:
 
 protected:
     ff_dCompS(std::pair<ChannelType, ff_endpoint> destEndpoint,
-        precomputedRT_t* rt, std::string gName = "",
+        std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-		: rt(rt), gName(gName), batchSize(batchSize), messageOTF(messageOTF),internalMessageOTF(internalMessageOTF) {
+		: gName(gName), batchSize(batchSize), messageOTF(messageOTF),internalMessageOTF(internalMessageOTF) {
         this->destEndpoints.push_back(std::move(destEndpoint));
     }
 
     ff_dCompS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
-        precomputedRT_t* rt, std::string gName = "",
+        std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-            : rt(rt), destEndpoints(std::move(destEndpoints_)), gName(gName),
+            : destEndpoints(std::move(destEndpoints_)), gName(gName),
             batchSize(batchSize), messageOTF(messageOTF), internalMessageOTF(internalMessageOTF) {}
 
 
-    precomputedRT_t*                                    rt;
     std::vector<std::pair<ChannelType, ff_endpoint>>    destEndpoints;
     std::string                                         gName;
     int                                                 batchSize;

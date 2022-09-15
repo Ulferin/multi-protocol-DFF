@@ -21,8 +21,8 @@ protected:
     size_t neos = 0;
 
 public:
-    ff_dCommMPI(size_t input_channels, std::map<int, int> routingTable = {std::make_pair(0,0)})
-		: ff_dComp(input_channels, routingTable) {}
+    ff_dCommMPI(size_t input_channels)
+		: ff_dComp(input_channels) {}
 
     virtual void init(ff_monode_t<message_t>* data) {
         receiver = (ff_dAreceiver*)data;
@@ -245,16 +245,16 @@ protected:
 
 public:
     ff_dCommMPIS(std::pair<ChannelType, ff_endpoint> destEndpoint,
-        precomputedRT_t* rt, std::string gName = "",
+        std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-		: ff_dCompS(destEndpoint, rt, gName, batchSize, messageOTF, internalMessageOTF) {}
+		: ff_dCompS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
 
     ff_dCommMPIS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
-        precomputedRT_t* rt, std::string gName = "",
+        std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-            : ff_dCompS(destEndpoints_, rt, gName, batchSize, messageOTF, internalMessageOTF) {}
+            : ff_dCompS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
 
     virtual void init() {
         return;
@@ -287,7 +287,7 @@ public:
             for(auto& b : bb.second) b->waitCompletion();
     }
 
-    virtual int handshake() {
+    virtual int handshake(precomputedRT_t* rt) {
         for(auto& [ct, ep]: this->destEndpoints){
             int rank = ep.getRank();
             bool isInternal = ct == ChannelType::INT;
@@ -482,9 +482,8 @@ protected:
     }
 
 public:
-    ff_dCommTCP(ff_endpoint handshakeAddr, size_t input_channels,
-        std::map<int, int> routingTable = {std::make_pair(0,0)})
-		: ff_dComp(input_channels, routingTable), handshakeAddr(handshakeAddr) {}
+    ff_dCommTCP(ff_endpoint handshakeAddr, size_t input_channels)
+		: ff_dComp(input_channels), handshakeAddr(handshakeAddr) {}
 
 
     virtual void init(ff_monode_t<message_t>* data) {
@@ -716,16 +715,16 @@ protected:
 
 public:
     ff_dCommTCPS(std::pair<ChannelType, ff_endpoint> destEndpoint,
-        precomputedRT_t* rt, std::string gName = "",
+        std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-		: ff_dCompS(destEndpoint, rt, gName, batchSize, messageOTF, internalMessageOTF) {}
+		: ff_dCompS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
 
     ff_dCommTCPS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
-        precomputedRT_t* rt, std::string gName = "",
+        std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-            : ff_dCompS(destEndpoints_, rt, gName, batchSize, messageOTF, internalMessageOTF) {}
+            : ff_dCompS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
 
     virtual void init() {
         return;
@@ -748,7 +747,7 @@ public:
     }
     
 
-    virtual int handshake() {
+    virtual int handshake(precomputedRT_t* rt) {
         FD_ZERO(&set);
         FD_ZERO(&tmpset);
 
@@ -784,8 +783,6 @@ public:
             }));
 
             // compute the routing table!
-            // NOTE: since rt is only used here, it could become a parameter
-            //      from the Master rather than being a member of this class
             for(auto& [k,v] : *rt){
                 if (k.first != ep.groupName) continue;
                 for(int dest : v)
