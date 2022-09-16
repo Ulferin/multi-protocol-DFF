@@ -38,14 +38,7 @@ public:
         }      
     }
 
-    /**
-     * NOTE: here we should have two things: the first is a cycle over all the
-     *   components listen call and the check for the termination condition,
-     *   which should be the conditional composition of all the conditions
-     *   in the components. In this way, every time a component closes the
-     *   connection because the EOS are received from it, we remove from the
-     *   "active" receivers and we update the general condition. 
-    */
+
     int wait_components() {
         std::vector<std::pair<bool, ff_dComp*>> listeningComponents;
         for (auto &&component : components)
@@ -112,8 +105,8 @@ protected:
         it = componentsMap.begin();
         while(it != componentsMap.end()) {
             component = it->second;
-            if(component->haveConnType(external)) break;
             it++;
+            if(component->haveConnType(external)) break;
         }
         return component;
     }
