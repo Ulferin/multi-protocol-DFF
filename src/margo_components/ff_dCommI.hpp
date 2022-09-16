@@ -9,37 +9,22 @@ the barely necessary functions to receive and ship data in the network. */
 #include <ff/ff.hpp>
 #include <ff/dff.hpp>
 #include <ff/distributed/ff_network.hpp>
+#include "../ff_dCompI.hpp"
 
 using namespace ff;
 
-class ff_dCommunicator {
+class ff_dCommunicatorRPC: public ff_dComp {
 protected:
-    static int sendRoutingTable(const int sck, const std::vector<int>& dest){
-        dataBuffer buff; std::ostream oss(&buff);
-		cereal::PortableBinaryOutputArchive oarchive(oss);
-		oarchive << dest;
-
-        size_t sz = htobe64(buff.getLen());
-        struct iovec iov[2];
-        iov[0].iov_base = &sz;
-        iov[0].iov_len = sizeof(sz);
-        iov[1].iov_base = buff.getPtr();
-        iov[1].iov_len = buff.getLen();
-
-        if (writevn(sck, iov, 2) < 0){
-            error("Error writing on socket the routing Table\n");
-            return -1;
-        }
-
-        return 0;
-    }
-
 
     virtual int handshakeHandler(const int sck){
+
         // ricevo l'handshake e mi salvo che tipo di connessione è
         size_t size;
-        struct iovec iov; iov.iov_base = &size; iov.iov_len = sizeof(size);
-        switch (readvn(sck, &iov, 1)) {
+        ChannelType t;
+        struct iovec iov[2]; 
+        iov[0].iov_base = &t; iov[0].iov_len = sizeof(ChannelType);
+        iov[1].iov_base = &size; iov[1].iov_len = sizeof(size);
+        switch (readvn(sck, iov, 2)) {
            case -1: error("Error reading from socket\n"); // fatal error
            case  0: return -1; // connection close
         }
@@ -50,19 +35,11 @@ protected:
         if (readn(sck, groupName, size) < 0){
             error("Error reading from socket groupName\n"); return -1;
         }
-
-        if(internal) {
-            bool internalGroup = internalGroupsNames.contains(std::string(groupName,size));
-            isInternalConnection[sck] = internalGroup; // save somewhere the fact that this sck represent an internal connection
-
-            if (internalGroup) return this->sendRoutingTable(sck, internalDestinations);
-        }
-
-        std::vector<int> reachableDestinations;
-        for(const auto& [key, value] : this->routingTable)
-            reachableDestinations.push_back(key);
-
-        return this->sendRoutingTable(sck, reachableDestinations);
+        
+        sck2ChannelType[sck] = t;
+        if(t == ChannelType::INT) this->internalConnections++;
+        std::cout << "Done handshake with " << groupName << " - internal: " << this->internalConnections << "\n";
+        return 0;
     }
 
 
@@ -84,7 +61,7 @@ protected:
 
         int bind_err;
         if ((bind_err = bind(listen_sck, (struct sockaddr*)&serv_addr,sizeof(serv_addr))) < 0){
-            error("Error binding: %d -- %s\n", bind_err, strerror(errno));
+            error("Error binding port %d: %d -- %s\n", handshakeAddr.port, bind_err, strerror(errno));
             return -1;
         }
 
@@ -146,112 +123,47 @@ protected:
     }
 
 public:
-    virtual void init(ff_monode_t<message_t>*, int) = 0;
     virtual int comm_listen() {
         return this->_listen();
     }
-    virtual void finalize() = 0;
     
-    int getChannelID(int chid) {
-        return this->routingTable[chid];
-    }
-
     size_t getInternalConnections(){
         return this->internalConnections;
     }
 
 protected:
-    ff_dCommunicator(ff_endpoint handshakeAddr, bool internal,
-        std::vector<int> internalDestinations = {0},
-        std::map<int, int> routingTable = {{0,0}},
-        std::set<std::string> internalGroupsNames = {}):
-        handshakeAddr(handshakeAddr), internal(internal),
-        internalDestinations(internalDestinations),
-        routingTable(routingTable),
-        internalGroupsNames(internalGroupsNames)
-    {
-        internalConnections = this->internalGroupsNames.size();
-    }
+    ff_dCommunicatorRPC(ff_endpoint handshakeAddr, size_t input_channels):
+        ff_dComp(input_channels), handshakeAddr(handshakeAddr) {}
 
     ff_endpoint             handshakeAddr;
-    bool                    internal;
-    std::vector<int>        internalDestinations;
-    std::map<int, int>      routingTable;
-    std::set<std::string>   internalGroupsNames;
-    size_t                  internalConnections = 0;
-    std::map<int, bool>     isInternalConnection;
+    std::map<int, ChannelType> sck2ChannelType;
 
     int                     listen_sck;
-    size_t                  handshakes = 0;
-    size_t                  input_channels;
     int                     last_receive_fd = -1;
     int                     fdmax;
     fd_set                  set, tmpset;
 };
 
 
-class ff_dCommunicatorS {
+class ff_dCommunicatorRPCS: public ff_dCompS {
 protected:
-    virtual int receiveReachableDestinations(int sck, std::map<int,int>& m){
-       
-        size_t sz;
-        ssize_t r;
 
-        if ((r=readn(sck, (char*)&sz, sizeof(sz)))!=sizeof(sz)) {
-            if (r==0)
-                error("Error unexpected connection closed by receiver\n");
-            else			
-                error("Error reading size (errno=%d)");
-            return -1;
-        }
-	
-        sz = be64toh(sz);
-
-        
-        char* buff = new char [sz];
-		assert(buff);
-
-        if(readn(sck, buff, sz) < 0){
-            error("Error reading from socket\n");
-            delete [] buff;
-            return -1;
-        }
-
-        dataBuffer dbuff(buff, sz, true);
-        std::istream iss(&dbuff);
-		cereal::PortableBinaryInputArchive iarchive(iss);
-        std::vector<int> destinationsList;
-
-        iarchive >> destinationsList;
-
-        for (const int& d : destinationsList) m[d] = sck;
-
-        ff::cout << "Receiving routing table (" << sz << " bytes)" << ff::endl;
-        return 0;
-    }
-
-
-    int sendGroupName(const int sck){    
+    virtual int handshakeHandler(const int sck, ChannelType ct){
         size_t sz = htobe64(gName.size());
-        struct iovec iov[2];
-        iov[0].iov_base = &sz;
-        iov[0].iov_len = sizeof(sz);
-        iov[1].iov_base = (char*)(gName.c_str());
-        iov[1].iov_len = gName.size();
+        struct iovec iov[3];
+        iov[0].iov_base = &ct;
+        iov[0].iov_len = sizeof(ChannelType);
+        iov[1].iov_base = &sz;
+        iov[1].iov_len = sizeof(sz);
+        iov[2].iov_base = (char*)(gName.c_str());
+        iov[2].iov_len = gName.size();
 
-        if (writevn(sck, iov, 2) < 0){
+        if (writevn(sck, iov, 3) < 0){
             error("Error writing on socket\n");
             return -1;
         }
 
         return 0;
-    }
-
-
-    virtual int handshakeHandler(const int sck, bool isInternal){
-        if (sendGroupName(sck) < 0) return -1;
-
-        return receiveReachableDestinations(sck, isInternal ? internalDest2Socket : dest2Socket);
     }
 
 
@@ -328,32 +240,9 @@ protected:
     }
 
 
-    int sendToSck(int sck, message_t* task){
-        task->sender = htonl(task->sender);
-        task->chid = htonl(task->chid);
-
-        size_t sz = htobe64(task->data.getLen());
-        struct iovec iov[4];
-        iov[0].iov_base = &task->sender;
-        iov[0].iov_len = sizeof(task->sender);
-        iov[1].iov_base = &task->chid;
-        iov[1].iov_len = sizeof(task->chid);
-        iov[2].iov_base = &sz;
-        iov[2].iov_len = sizeof(sz);
-        iov[3].iov_base = task->data.getPtr();
-        iov[3].iov_len = task->data.getLen();
-
-        if (writevn(sck, iov, 4) < 0){
-            error("Error writing on socket\n");
-            return -1;
-        }
-
-        return 0;
-    }
-
 public:
     virtual void init() = 0;
-    virtual void send(message_t* task, bool external) = 0;
+    virtual int send(message_t* task, bool external) = 0;
     virtual void finalize() {
         for(size_t i=0; i < this->sockets.size(); i++)
             close(sockets[i]);
@@ -363,60 +252,68 @@ public:
         }
     }
 
-    virtual int handshake() {
-        for (size_t i = 0; i < this->dest_endpoints.size(); i++)
+    virtual int handshake(precomputedRT_t* rt) {
+        for (auto& [ct, ep] : this->destEndpoints)
         {
-            std::cout << "Trying to connect to: " << this->dest_endpoints[i].address << "\n";
-            int sck = tryConnect(this->dest_endpoints[i]);
+            std::cout << "Trying to connect to: " << ep.address << "\n";
+            int sck = tryConnect(ep);
             if (sck <= 0) {
                 error("Error on connecting!\n");
                 return -1;
             }
 
-            bool isInternal = internalGroups.contains(dest_endpoints[i].groupName);
-            if (isInternal) internalSockets.push_back(sck);
-            else sockets.push_back(sck);
-            handshakeHandler(sck, isInternal);
+            bool isInternal = ct == ChannelType::INT;
+            haveInternal = haveInternal || isInternal;
+            haveExternal = haveExternal || !isInternal;
+            if(isInternal) {internalDests++; internalSockets.push_back(sck);}
+            else {externalDests++; sockets.push_back(sck);}
             socks.push_back(sck);
+
+            // compute the routing table!
+            for(auto& [k,v] : *rt){
+                if (k.first != ep.groupName) continue;
+                for(int dest : v) {
+                    dest2Socket[std::make_pair(dest, k.second)] = sck;
+                    printf("[HSK]Putting %d:%d -> %d\n", dest, k.second, sck);
+                }
+            }
+
+            if(handshakeHandler(sck, ct) < 0) {
+                error("Error in handshake");
+                return -1;
+            }
         }
+        this->destEndpoints.clear();
         return 0;
     }
 
-    int getInternalCount() {
-        return this->internalDest2Socket.size();
-    }
+    virtual void notify(ssize_t id, bool external) = 0;
 
-    int getExternalCount() {
-        return this->dest2Socket.size();
-    }
-
-    std::map<int, int> getInternalMap() {
-        return this->internalDest2Socket;
+    bool haveConnType(bool external) {
+        return external ? haveExternal : haveInternal;
     }
 
 protected:
-    ff_dCommunicatorS(ff_endpoint dest_endpoint,
-        std::string gName = "", std::set<std::string> internalGroups = {}):
-            gName(gName), internalGroups(std::move(internalGroups)){
-        
-        this->dest_endpoints.push_back(std::move(dest_endpoint));
+    ff_dCommunicatorRPCS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+        std::string gName = "",
+        int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
+        int internalMessageOTF = DEFAULT_INTERNALMSG_OTF):
+            ff_dCompS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF){
     }
 
 
-    ff_dCommunicatorS(std::vector<ff_endpoint> dest_endpoints_,
-        std::string gName = "", std::set<std::string> internalGroups = {}):
-            dest_endpoints(std::move(dest_endpoints_)), gName(gName),
-            internalGroups(std::move(internalGroups)) {}
+    ff_dCommunicatorRPCS(std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
+        std::string gName = "",
+        int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
+        int internalMessageOTF = DEFAULT_INTERNALMSG_OTF):
+            ff_dCompS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF){}
 
 
-    std::vector<ff_endpoint>                dest_endpoints;
-    std::string                             gName;
-    std::set<std::string>                   internalGroups;
-    std::vector<int>                        sockets;
-    std::map<int, int>                      dest2Socket;        //FIXME: poor naming, this is simply dest2handle
-    std::vector<int>                        internalSockets;    //FIXME: same
-    std::map<int, int>                      internalDest2Socket;//FIXME: same
-    std::vector<int>                        socks;  //CHECK: is it really used?
+    std::vector<int>                                    sockets;
+    std::map<std::pair<int, ChannelType>, int>          dest2Socket;
+    std::vector<int>                                    internalSockets;
+    int externalDests = 0, internalDests = 0;
+    int nextExternal = 0, nextInternal = 0;
 };
 
 #endif

@@ -100,7 +100,7 @@ public:
     }
 
     virtual void registerEOS(bool isInternal){
-        neos++;
+        // neos++;
         if(!isInternal) {
             if (++this->externalNEos == (this->input_channels-communicator->getInternalConnections())) {
                 for(size_t i = 0; i < get_num_outchannels()-1; i++) ff_send_out_to(this->EOS, i);
@@ -111,7 +111,7 @@ public:
             }
         }
 
-        // ff_dAreceiver::registerEOS(isInternal);
+        ff_dAreceiver::registerEOS(isInternal);
     }
 
     virtual void forward(message_t* task, bool isInternal){

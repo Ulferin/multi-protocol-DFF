@@ -16,10 +16,13 @@
 #include <iostream>
 #include <ff/dff.hpp>
 #include <ff/distributed/ff_dadapters.hpp>
+#include <ff/distributed/ff_network.hpp>
+#include <vector>
 #include <mutex>
 #include <map>
+#include <mpi.h>
 
-#include "ff_dCommComp.hpp"
+#include "margo_components/ff_dCommunicator.hpp"
 #include "ff_dAreceiverComp.hpp"
 #include "ff_dAsenderComp.hpp"
 #include "ff_dCommMaster.hpp"
@@ -44,7 +47,6 @@ struct Source : ff_monode_t<std::string>{
 
     std::string* svc(std::string* in){
         delete in;
-        std::cout << "Source starting generating tasks!" << std::endl;
         for(int i = 0; i < numWorker; i++)
 			ff_send_out_to(new std::string("Task" + std::to_string(i) + " generated from " + std::to_string(generatorID) + " for " + std::to_string(i)), i);
         
@@ -57,8 +59,8 @@ struct Sink : ff_minode_t<std::string>{
     int sinkID;
     Sink(int id): sinkID(id) {}
     std::string* svc(std::string* in){
-        printf("[Sink] Received task %s\n", std::to_string(get_channel_id()).c_str());
         std::string* output = new std::string(*in + " received by Sink " + std::to_string(sinkID) + " from " +  std::to_string(get_channel_id()));
+        std::cout << "[SINK] " << *output << std::endl;
         delete in;
         return output;
     }
@@ -98,78 +100,90 @@ struct ForwarderNode : ff_node {
 
 int main(int argc, char*argv[]){
 
-    if (argc != 3){
-        std::cerr << "Execute with the index of process!" << std::endl;
-        return 1;
-    }
+    if(argc < 5)
+        return -1;
 
+    int myrank = atoi(argv[1]);
     int ntask = atoi(argv[2]);
+    const char* protocol = argv[3];
+    int port = atoi(argv[4]);
 
-    ff_endpoint g1("127.0.0.1", 49001);
+    margo_set_environment(NULL);
+    ABT_init(0, NULL);
+
+
+    /* --- TCP HANDSHAKE ENDPOINTS --- */
+    ff_endpoint g1("127.0.0.1", port);
     g1.groupName = "G1";
 
-    ff_endpoint g1_2("127.0.0.1", 49004);
-    g1_2.groupName = "G1";
-
-    ff_endpoint g2("127.0.0.1", 49002);
+    ff_endpoint g2("127.0.0.1", port+1);
     g2.groupName = "G2";
 
-    ff_endpoint g2_2("127.0.0.1", 49005);
-    g2_2.groupName = "G2";
-
-    ff_endpoint g3("127.0.0.1", 49003);
+    ff_endpoint g3("127.0.0.1", port+2);
     g3.groupName = "G3";
+    /* --- TCP HANDSHAKE ENDPOINTS --- */
+
+
+    /* --- RPC ENDPOINTS --- */
+    ff_endpoint_rpc G0toG1_rpc("127.0.0.1", port+3, protocol);
+    ff_endpoint_rpc G2toG1_rpc("127.0.0.1", port+4, protocol);
+
+    ff_endpoint_rpc G0toG2_rpc("127.0.0.1", port+5, protocol);
+    ff_endpoint_rpc G1toG2_rpc("127.0.0.1", port+6, protocol);
+
+    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", port+7, protocol);
+    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", port+8, protocol);
+    /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;
     ff_a2a a2a;
+
+
+
     std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt;
-    if (atoi(argv[1]) == 0){
+    if (myrank == 0){
         rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector({0});
         rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector({1});
-
-        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g2.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, "G0")}}, &rt);
-
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g2.groupName},
+            new ff_dCommRPCS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, {&G0toG1_rpc, &G0toG2_rpc}, "G0")
+        }}, &rt);
+        
         gFarm.add_collector(new ff_dAsender(sendMaster));
+
         gFarm.add_workers({new WrapperOUT(new RealSource(ntask), 0, 1, 0, true)});
 
         gFarm.run_and_wait_end();
+        ABT_finalize();
         return 0;
-    } else if (atoi(argv[1]) == 1){
+    } else if (myrank == 1){
+        printf("Listening on port: %d\n", g1.port);
         rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
-        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommTCP(g1, 1),new ff_dCommTCP(g1_2, 1)}, {{0, 0}});
-        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g3.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g3}}, "G1")}, {{g2_2.groupName}, new ff_dCommTCPS({{ChannelType::INT, g2_2}}, "G1")}}, &rt);
-
-        // ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g1, 2, {{0, 0}})}}, {{0, 0}});
-        // ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g2.groupName, g3.groupName}, new ff_dCommTCPS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1")}}, &rt);
-
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommRPC(g1, 2, {&G0toG1_rpc, &G2toG1_rpc}, true)}, {{0, 0}});
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g2.groupName, g3.groupName}, new ff_dCommRPCS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", true)}}, &rt);
+         
         gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
         gFarm.add_collector(new ff_dAsenderH(sendMaster));
-        gFarm.cleanup_emitter();
-		gFarm.cleanup_collector();
-		
-        auto s = new Source(2,0);
+
+		auto s = new Source(2,0);
         auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 2, 0, {{0,0}}, true), true, true);
 
-        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(0,0)})});
+        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(0,0)})}, 0, true);
         auto sink = new Sink(0);
         a2a.add_secondset<ff_node>({new ff_comb(new CollectorAdapter(sink, {0}, true), new WrapperOUT(new ForwarderNode(sink->serializeF, sink->freetaskF), 0, 1, 0, true)), new SquareBoxRight});
 
-    } else if (atoi(argv[1]) == 2) {
+    } else if (myrank == 2) {
+        printf("Listening on port: %d\n", g2.port);
         rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
 
-        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommTCP(g2, 1),new ff_dCommTCP(g2_2, 1)}, {{1, 0}});
-        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g3.groupName}, new ff_dCommTCPS({{ChannelType::FWD, g3}}, "G2")}, {{g1.groupName}, new ff_dCommTCPS({{ChannelType::INT, g1_2}}, "G2")}}, &rt);
-
-
-
-        // ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({{false, new ff_dCommTCP(g2, 2, {{1, 0}})}}, {{1, 0}});
-        // ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g3.groupName}, new ff_dCommTCPS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, &rt, "G2")}}, &rt);
-
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommRPC(g2, 2, {&G0toG2_rpc, &G1toG2_rpc}, true)}, {{1, 0}});
+        ff_dSenderMaster* sendMaster = new ff_dSenderMaster({{{g1.groupName, g3.groupName}, new ff_dCommRPCS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", true)}}, &rt);
+        
         gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
         gFarm.add_collector(new ff_dAsenderH(sendMaster));
+
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 
@@ -188,13 +202,18 @@ int main(int argc, char*argv[]){
 		
         
     } else {
-        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommTCP(g3, 2)});
+        printf("Listening on port: %d\n", g3.port);
+        ff_dReceiverMaster *recMaster = new ff_dReceiverMaster({new ff_dCommRPC(g3, 2, {&G1toG3_rpc, &G2toG3_rpc})});
+
         gFarm.add_emitter(new ff_dAreceiver(recMaster, 2));
         gFarm.add_workers({new WrapperIN(new StringPrinter(), 1, true)});
 
         gFarm.run_and_wait_end();
+        ABT_finalize();
         return 0;
     }
     gFarm.add_workers({&a2a});
     gFarm.run_and_wait_end();
+    ABT_finalize();
+    return 0;
 }

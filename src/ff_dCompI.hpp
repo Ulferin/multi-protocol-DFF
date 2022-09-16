@@ -17,7 +17,7 @@ class ff_dComp {
 protected:
 
 public:
-    // FIXME: qui in realtà vorremmo una callback da chiamare in qualche modo, non l'intero oggetto
+    virtual void boot_component() {return;}
     virtual void init(ff_monode_t<message_t>*) = 0;
     virtual int comm_listen() = 0;
     virtual void finalize() = 0;
@@ -27,8 +27,6 @@ public:
     }
 
 protected:
-    //FIXME: l'input_channels nel caso di gestione di più receiver è il numero di
-    //      connessioni in entrata su quel componente
     ff_dComp(size_t input_channels)
             : input_channels(input_channels) {}
 
@@ -48,6 +46,7 @@ class ff_dCompS {
 protected:
 
 public:
+    virtual void boot_component() {return;}
     virtual void init() = 0;
     virtual int send(message_t* task, bool external) = 0;
     virtual void finalize() = 0;

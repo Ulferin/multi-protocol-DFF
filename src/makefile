@@ -16,7 +16,7 @@ LDLIBS = -pthread
 DEBUG = 
 
 TARGETS = comm_test.out tcp_cl_test.out rpc_cl_test.out pipe_cl_test.out mpi_cl_test.out
-MARGO_FF_DEPS = ff_dAreceiver.hpp ff_dAsender.hpp ff_dCommunicator.hpp ff_drpc_types.h ff_margo_utils.hpp ff_dCommI.hpp
+MARGO_FF_DEPS = $(FF_DEPS) margo_components/ff_dCommunicator.hpp margo_components/ff_drpc_types.h margo_components/ff_margo_utils.hpp margo_components/ff_dCommI.hpp
 FF_DEPS = ff_dAreceiverComp.hpp ff_dAsenderComp.hpp ff_dCommComp.hpp ff_dCommMaster.hpp ff_dCommMasterI.hpp ff_dCompI.hpp
 
 .PHONY = all clean cleanall
@@ -26,7 +26,7 @@ all: $(TARGETS)
 comm_test.out: test_a2a_comm.cpp $(FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)
 
-rpc_cl_test.out: test_a2a_cl.cpp $(MARGO_FF_DEPS)
+rpc_cl_test.out: test_a2a_rpc.cpp $(MARGO_FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS_MARGO) $(DEFINES) -DRPC_TEST
 
 pipe_cl_test.out: test_pipe.cpp $(FF_DEPS)
