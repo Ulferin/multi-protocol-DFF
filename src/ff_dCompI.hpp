@@ -17,6 +17,7 @@ class ff_dComp {
 protected:
 
 public:
+    // NOTE: only for backward compatibility with Margo components
     virtual void boot_component() {return;}
     virtual void init(ff_monode_t<message_t>*) = 0;
     virtual int comm_listen() = 0;
@@ -46,6 +47,7 @@ class ff_dCompS {
 protected:
 
 public:
+    // NOTE: only for backward compatibility with Margo components
     virtual void boot_component() {return;}
     virtual void init() = 0;
     virtual int send(message_t* task, bool external) = 0;

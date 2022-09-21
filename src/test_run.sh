@@ -1,10 +1,9 @@
 type=${1:-tcp}
 ntasks=${2:-10000}
-lmswait=${3:-0}
-rmswait=${4:-0}
-protocol=${5:-"ofi+sockets"}
+protocol=${3:-""}
+port=${4:-""}
 
-ssh -tt federico@ffremote "/home/federico/programming/multi-protocol-DFF/src/${type}_cl_test.out 3 $ntasks $lmswait $rmswait $protocol 2>&1 > ~/programming/multi-protocol-DFF/src/g3_$type.txt" &
-ssh -tt federico@ffremote "/home/federico/programming/multi-protocol-DFF/src/${type}_cl_test.out 2 $ntasks $lmswait $rmswait $protocol 2>&1 > ~/programming/multi-protocol-DFF/src/g2_$type.txt" &
-ssh -tt federico@ffremote "/home/federico/programming/multi-protocol-DFF/src/${type}_cl_test.out 1 $ntasks $lmswait $rmswait $protocol 2>&1 > ~/programming/multi-protocol-DFF/src/g1_$type.txt" &
-ssh -tt federico@ffremote "/home/federico/programming/multi-protocol-DFF/src/${type}_cl_test.out 0 $ntasks $lmswait $rmswait $protocol 2>&1 > ~/programming/multi-protocol-DFF/src/g0_$type.txt" &
+ssh -tt federico@ffremote "./${type}_cl_test.out 3 $ntasks $protocol $port 2>&1 > ./log.3.${type}.txt" &
+ssh -tt federico@ffremote "./${type}_cl_test.out 2 $ntasks $protocol $port 2>&1 > ./log.2.${type}.txt" &
+ssh -tt federico@ffremote "./${type}_cl_test.out 1 $ntasks $protocol $port 2>&1 > ./log.1.${type}.txt" &
+ssh -tt federico@ffremote "./${type}_cl_test.out 0 $ntasks $protocol $port 2>&1 > ./log.0.${type}.txt" &
