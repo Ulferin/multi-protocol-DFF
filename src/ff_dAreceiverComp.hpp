@@ -14,8 +14,6 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/polymorphic.hpp>
 
-// #include "ff_dCompI.hpp"
-// #include "ff_dCommMaster.hpp"
 #include "ff_dCommMasterI.hpp"
 
 
@@ -62,7 +60,7 @@ public:
 
     virtual void registerEOS(bool isInternal) {
         if(++neos == input_channels) {
-            communicator->finalize(); //FIXME: la finalize qui potrebbe essere un problema
+            communicator->finalize();
         }
     }
 

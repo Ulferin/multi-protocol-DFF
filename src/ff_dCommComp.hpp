@@ -16,7 +16,7 @@ class ff_dCommMPI: public ff_dComp {
 protected:
     ff_dAreceiver* receiver;        // FIXME: this should become a callback instead of whole object
     std::set<int> internalRanks;
-    std::map<int, ChannelType> rank2ChannelType; //FIXME: creare qualcosa di condiviso
+    std::map<int, ChannelType> rank2ChannelType;
     bool finalized = false;
     size_t neos = 0;
 
@@ -27,12 +27,11 @@ public:
     virtual void init(ff_monode_t<message_t>* data) {
         receiver = (ff_dAreceiver*)data;
 
-        // NOTE: probabilmente input_channels si può rimuovere e fornire come parametro il numero di connessioni attese per questo communicator
         printf("Starting handshake with MPI\n");
         for(size_t i = 0; i < input_channels; i++)
             handshakeHandler();
         printf("Ending handshake with MPI\n");
-        // FIXME: si può togliere dato che adesso lo inizializziamo dentro la get
+        
         this->internalConnections = std::count_if(std::begin(rank2ChannelType),
                                             std::end  (rank2ChannelType),
                                             [](std::pair<int, ChannelType> const &p) {return p.second == ChannelType::INT;});
@@ -41,7 +40,7 @@ public:
     virtual int comm_listen() {
         MPI_Status status;
         if(neos < input_channels){
-            // printf("[MPI] Listening\n");
+            
             int headersLen;
             int flag = 0;
             // MPI_Probe(MPI_ANY_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &status);
@@ -51,12 +50,11 @@ public:
             MPI_Get_count(&status, MPI_LONG, &headersLen);
             long headers[headersLen];
             int rank = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-            printf("Receiving something %d\n", rank);
+            
             if (MPI_Recv(headers, headersLen, MPI_LONG, status.MPI_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &status) != MPI_SUCCESS)
                 error("Error on Recv Receiver primo in alto\n");
             bool feedback = ChannelType::FBK == rank2ChannelType[status.MPI_SOURCE];
             assert(headers[0]*3+1 == headersLen);
-            printf("Done receiving something %d\n", rank);
 
             size_t sz = headers[3];
 
@@ -256,9 +254,6 @@ public:
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
             : ff_dCompS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
 
-    virtual void init() {
-        return;
-    }
 
     virtual int send(message_t* task, bool external) {
         int rank;
@@ -398,8 +393,9 @@ protected:
         }
         
         sck2ChannelType[sck] = t;
+        this->internalConnections += t == ChannelType::INT;
         std::cout << "Done handshake with " << groupName << "\n";
-        return 0; //this->sendRoutingTable(sck, reachableDestinations);
+        return 0;
     }
 
 
@@ -502,7 +498,6 @@ public:
         fdmax = this->listen_sck;
     }
 
-    //FIXME: da aggiungere return 1 per GO_ON, 0 per STOP e -1 per ERR
     virtual int comm_listen() {
         if (neos < input_channels) {
         // while(neos < input_channels){
@@ -539,7 +534,6 @@ public:
                                     fdmax = ii;
                                     break;
                                 }
-						
                     }
 					
                 }
@@ -552,13 +546,6 @@ public:
 
     virtual void finalize() {
         close(this->listen_sck);
-    }
-
-    virtual size_t getInternalConnections() {
-        this->internalConnections = std::count_if(std::begin(sck2ChannelType),
-                                            std::end  (sck2ChannelType),
-                                            [](std::pair<int, ChannelType> const &p) {return p.second == ChannelType::INT;});
-        return this->internalConnections;
     }
 
 
@@ -725,10 +712,6 @@ public:
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
             : ff_dCompS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
-
-    virtual void init() {
-        return;
-    }
 
 
     virtual int send(message_t* task, bool external) {

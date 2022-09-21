@@ -7,8 +7,6 @@
 #include "ff_dCompI.hpp"
 #include "ff_dCommMasterI.hpp"
 
-#include "margo_components/ff_dCommI.hpp"
-
 #define MASTER_SENDER_MODE 0
 #define MASTER_RECEIVER_MODE 1
 

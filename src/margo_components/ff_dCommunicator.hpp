@@ -477,10 +477,6 @@ public:
         }          
     }
 
-    virtual void init() {
-        return; 
-    }
-
     virtual int send(message_t* task, bool external) {
         ff_endpoint_rpc* endp;
         hg_id_t rpc_id;

@@ -38,7 +38,6 @@
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
 #include <ff/distributed/ff_dgroups.hpp>
-// #include "ff_dCompI.hpp"
 #include "ff_dCommMasterI.hpp"
 
 using namespace ff;
@@ -46,10 +45,7 @@ using namespace ff;
 class ff_dAsender: public ff_minode_t<message_t> {
 public:
     ff_dAsender(ff_dSenderMasterI* communicator, int coreid = -1, int busy = 1):
-            communicator(communicator), coreid(coreid), busy(busy) {
-        
-        // this->communicator->init();
-    }
+            communicator(communicator), coreid(coreid), busy(busy) {}
 
 
     int svc_init() {

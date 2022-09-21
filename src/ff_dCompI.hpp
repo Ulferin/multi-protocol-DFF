@@ -49,7 +49,6 @@ protected:
 public:
     // NOTE: only for backward compatibility with Margo components
     virtual void boot_component() {return;}
-    virtual void init() = 0;
     virtual int send(message_t* task, bool external) = 0;
     virtual void finalize() = 0;
 
@@ -66,7 +65,8 @@ protected:
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-		: gName(gName), batchSize(batchSize), messageOTF(messageOTF),internalMessageOTF(internalMessageOTF) {
+		: gName(gName), batchSize(batchSize), messageOTF(messageOTF),
+        internalMessageOTF(internalMessageOTF) {
         this->destEndpoints.push_back(std::move(destEndpoint));
     }
 
@@ -75,7 +75,8 @@ protected:
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
             : destEndpoints(std::move(destEndpoints_)), gName(gName),
-            batchSize(batchSize), messageOTF(messageOTF), internalMessageOTF(internalMessageOTF) {}
+            batchSize(batchSize), messageOTF(messageOTF),
+            internalMessageOTF(internalMessageOTF) {}
 
 
     std::vector<std::pair<ChannelType, ff_endpoint>>    destEndpoints;
@@ -88,7 +89,7 @@ protected:
     int                                                 fdmax = -1;
     std::vector<int>                                    socks; 
 
-    bool haveExternal=false, haveInternal=false;
+    bool                                                haveExternal=false, haveInternal=false;
 };
 
 #endif
