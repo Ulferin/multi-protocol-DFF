@@ -7,12 +7,12 @@
 #include <ff/distributed/ff_batchbuffer.hpp>
 #include <margo.h>
 
-#include "../ff_dCompI.hpp"
+#include "../ff_dTransportTypeI.hpp"
 #include "../ff_dAreceiverComp.hpp"
 #include "ff_drpc_types.h"
 #include "ff_margo_utils.hpp"
 
-class ff_dCommRPC: public ff_dComp {
+class TransportRPC: public TransportType {
 
 protected:
     void init_ABT() {
@@ -181,9 +181,9 @@ protected:
     }
 
 public:
-    ff_dCommRPC(ff_endpoint handshakeAddr, size_t input_channels,
+    TransportRPC(ff_endpoint handshakeAddr, size_t input_channels,
         std::vector<ff_endpoint_rpc*> endRPC, bool internal=false, bool busy=true):
-        ff_dComp(input_channels), handshakeAddr(handshakeAddr),
+        TransportType(input_channels), handshakeAddr(handshakeAddr),
         endRPC(std::move(endRPC)), internal(internal), busy(busy) {}
 
     virtual void boot_component() {
@@ -249,7 +249,7 @@ protected:
 };
 
 
-class ff_dCommRPCS: public ff_dCompS {
+class TransportRPCS: public TransportTypeS {
 
 protected:
     virtual int handshakeHandler(const int sck, ChannelType ct){
@@ -443,16 +443,16 @@ protected:
 
 public:
 
-    ff_dCommRPCS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+    TransportRPCS(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::vector<ff_endpoint_rpc*> endRPC,
         std::string gName = "", bool internal=false, bool busy = true):
-            ff_dCompS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
+            TransportTypeS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
             endRPC(std::move(endRPC)), internal(internal) {}
 
-    ff_dCommRPCS(std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints,
+    TransportRPCS(std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints,
         std::vector<ff_endpoint_rpc*> endRPC,
         std::string gName = "", bool internal=false, bool busy = true):
-            ff_dCompS(destEndpoints, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
+            TransportTypeS(destEndpoints, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
             endRPC(std::move(endRPC)), internal(internal) {}
 
     virtual void boot_component() {

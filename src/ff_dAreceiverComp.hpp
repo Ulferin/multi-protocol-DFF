@@ -14,7 +14,7 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/polymorphic.hpp>
 
-#include "ff_dCommMasterI.hpp"
+#include <ff_dManagerI.hpp>
 
 
 
@@ -25,7 +25,7 @@ class ff_dAreceiver: public ff_monode_t<message_t> {
 
 public:
 
-    ff_dAreceiver(ff_dReceiverMasterI* communicator, size_t input_channels,
+    ff_dAreceiver(ReceiverManagerI* communicator, size_t input_channels,
         int coreid = -1, int busy = 0, int expected=-1):
             communicator(communicator), input_channels(input_channels),
             coreid(coreid), busy(busy), expected(expected) {}
@@ -69,7 +69,7 @@ public:
     }
 
 protected:
-    ff_dReceiverMasterI*   communicator;
+    ReceiverManagerI*   communicator;
     size_t              input_channels;
     int                 coreid;
     int                 busy;
@@ -88,7 +88,7 @@ protected:
     int next_rr_destination = 0;
 
 public:
-    ff_dAreceiverH(ff_dReceiverMasterI* communicator, size_t input_channels,
+    ff_dAreceiverH(ReceiverManagerI* communicator, size_t input_channels,
         int coreid = -1, int busy = 0, int expected=-1)
 		: ff_dAreceiver(communicator, input_channels, coreid, busy, expected)  {}
 

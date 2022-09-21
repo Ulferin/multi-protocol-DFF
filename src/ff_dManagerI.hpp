@@ -6,7 +6,7 @@
 #include <ff/dff.hpp>
 #include <ff/distributed/ff_network.hpp>
 
-class ff_dReceiverMasterI {
+class ReceiverManagerI {
 
 public:
     virtual void init(ff_monode_t<message_t>* receiver) = 0;
@@ -16,7 +16,7 @@ public:
     virtual size_t getInternalConnections() = 0;
 };
 
-class ff_dSenderMasterI {
+class SenderManagerI {
 
 public:
     virtual int init() = 0;

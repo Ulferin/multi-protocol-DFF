@@ -13,7 +13,7 @@ the barely necessary functions to receive and ship data in the network. */
 using namespace ff;
 using precomputedRT_t = std::map<std::pair<std::string, ChannelType>, std::vector<int>>;
 
-class ff_dComp {
+class TransportType {
 protected:
 
 public:
@@ -28,7 +28,7 @@ public:
     }
 
 protected:
-    ff_dComp(size_t input_channels)
+    TransportType(size_t input_channels)
             : input_channels(input_channels) {}
 
     size_t                  input_channels;
@@ -43,7 +43,7 @@ protected:
 };
 
 
-class ff_dCompS {
+class TransportTypeS {
 protected:
 
 public:
@@ -61,7 +61,7 @@ public:
     }
 
 protected:
-    ff_dCompS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+    TransportTypeS(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
@@ -70,7 +70,7 @@ protected:
         this->destEndpoints.push_back(std::move(destEndpoint));
     }
 
-    ff_dCompS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
+    TransportTypeS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)

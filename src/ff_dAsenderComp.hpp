@@ -38,13 +38,13 @@
 #include <ff/ff.hpp>
 #include <ff/distributed/ff_network.hpp>
 #include <ff/distributed/ff_dgroups.hpp>
-#include "ff_dCommMasterI.hpp"
+#include <ff_dManagerI.hpp>
 
 using namespace ff;
 
 class ff_dAsender: public ff_minode_t<message_t> {
 public:
-    ff_dAsender(ff_dSenderMasterI* communicator, int coreid = -1, int busy = 1):
+    ff_dAsender(SenderManagerI* communicator, int coreid = -1, int busy = 1):
             communicator(communicator), coreid(coreid), busy(busy) {}
 
 
@@ -85,7 +85,7 @@ public:
 protected:
 
     // From ff_dsender
-    ff_dSenderMasterI*                  communicator;
+    SenderManagerI*                  communicator;
     size_t                              neos=0;
     int                                 nextExternal = 0, nextInternal = 0;
     int                                 coreid;
@@ -105,7 +105,7 @@ bool squareBoxEOS = false;
 
 public:
 
-    ff_dAsenderH(ff_dSenderMasterI* communicator, int coreid = -1, int busy = 1):
+    ff_dAsenderH(SenderManagerI* communicator, int coreid = -1, int busy = 1):
             ff_dAsender(communicator, coreid, busy) {}
 
     message_t* svc(message_t* task) {

@@ -3,23 +3,23 @@
 
 #include <vector>
 #include <map>
-#include "ff_dAreceiverComp.hpp"
-#include "ff_dCompI.hpp"
-#include "ff_dCommMasterI.hpp"
+#include <ff_dAreceiverComp.hpp>
+#include <ff_dTransportTypeI.hpp>
+#include <ff_dManagerI.hpp>
 
 #define MASTER_SENDER_MODE 0
 #define MASTER_RECEIVER_MODE 1
 
 
-class ff_dReceiverMaster: public ff_dReceiverMasterI {
+class ReceiverManager: public ReceiverManagerI {
 
 protected:
-    std::vector<ff_dComp*>      components;
+    std::vector<TransportType*>      components;
     std::map<int, int>          routingTable;
     bool                        end = false;
 
 public:
-    ff_dReceiverMaster(std::vector<ff_dComp*> components,
+    ReceiverManager(std::vector<TransportType*> components,
         std::map<int, int> routingTable = {std::make_pair(0,0)})
           :components(std::move(components)), routingTable(routingTable){
         
@@ -39,7 +39,7 @@ public:
 
 
     int wait_components() {
-        std::vector<std::pair<bool, ff_dComp*>> listeningComponents;
+        std::vector<std::pair<bool, TransportType*>> listeningComponents;
         for (auto &&component : components)
             listeningComponents.push_back(std::make_pair(false, component));
         
@@ -87,19 +87,19 @@ public:
 };
 
 
-class ff_dSenderMaster : public ff_dSenderMasterI {
+class SenderManager : public SenderManagerI {
 
 protected:
-    std::vector<std::pair<std::set<std::string>, ff_dCompS*>> components;
+    std::vector<std::pair<std::set<std::string>, TransportTypeS*>> components;
     precomputedRT_t* rt;
-    std::map<std::pair<int, ff::ChannelType>, ff_dCompS*>        componentsMap;
+    std::map<std::pair<int, ff::ChannelType>, TransportTypeS*>        componentsMap;
     int next_component = 0;
     int received = 0;
-    std::map<std::pair<int, ff::ChannelType>, ff_dCompS*>::iterator it;
-    std::vector<std::pair<precomputedRT_t*, ff_dCompS*>> routedComponents;
+    std::map<std::pair<int, ff::ChannelType>, TransportTypeS*>::iterator it;
+    std::vector<std::pair<precomputedRT_t*, TransportTypeS*>> routedComponents;
 
-    ff_dCompS* getNextComponent(bool external) {
-        ff_dCompS* component;
+    TransportTypeS* getNextComponent(bool external) {
+        TransportTypeS* component;
         // if(it == componentsMap.end()) it = componentsMap.begin();
         it = componentsMap.begin();
         while(it != componentsMap.end()) {
@@ -111,8 +111,8 @@ protected:
     }
 
 public:
-    ff_dSenderMaster(
-        std::vector<std::pair<std::set<std::string>, ff_dCompS*>> components,
+    SenderManager(
+        std::vector<std::pair<std::set<std::string>, TransportTypeS*>> components,
         precomputedRT_t* rt)
         : components(std::move(components)), rt(rt) {
 
@@ -151,7 +151,7 @@ public:
 
     int send(message_t* task, bool external) {
         received++;
-        ff_dCompS* component;
+        TransportTypeS* component;
         ff::ChannelType cht = external ? (task->feedback ? ChannelType::FBK : ChannelType::FWD) : ff::ChannelType::INT;
         if(task->chid == -1) {
             component = getNextComponent(external);

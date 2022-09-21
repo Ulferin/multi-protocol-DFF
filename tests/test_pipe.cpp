@@ -204,14 +204,14 @@ int main(int argc, char*argv[]){
     if (atoi(argv[1]) == 0) {
         gFarm.add_workers({new WrapperOUT(new Source(ntask, Rmswait), 1, true)});
         #ifdef TCP_TEST
-        gFarm.add_collector(new ff_dAsender(new ff_dCommTCPS({g1, g2}, "G0", {})));                             //TCP
+        gFarm.add_collector(new ff_dAsender(new TransportTCPS({g1, g2}, "G0", {})));                             //TCP
         #endif
 
         // gFarm.add_collector(new ff_dsender({g1, g2}, "G0"));                                                 //ORIGINAL
 
         #ifdef RPC_TEST
         gFarm.add_collector(new ff_dAsender(                                                                 //RPC
-                new ff_dCommRPCS({g1}, {&G0toG1_rpc}, "G0", {}, false, true), -1, 1));       //RPC
+                new TransportRPCS({g1}, {&G0toG1_rpc}, "G0", {}, false, true), -1, 1));       //RPC
         #endif
 
         gFarm.run_and_wait_end();
@@ -220,10 +220,10 @@ int main(int argc, char*argv[]){
     } else if (atoi(argv[1]) == 1){
         #ifdef RPC_TEST
         gFarm.add_collector(new ff_dAsender(                                                                 //RPC
-                new ff_dCommRPCS({g3}, {&G1toG3_rpc}, "G1", {}, false, true), -1, 1));       //RPC
+                new TransportRPCS({g3}, {&G1toG3_rpc}, "G1", {}, false, true), -1, 1));       //RPC
         
         gFarm.add_emitter(new ff_dAreceiver(                                                         //RPC
-            new ff_dCommRPC(g1, false, true, {&G0toG1_rpc}, {},                         //RPC
+            new TransportRPC(g1, false, true, {&G0toG1_rpc}, {},                         //RPC
                     {std::make_pair(0, 0)}, {}),                                                     //RPC
             1, -1, 1, ntask));                                                                              //RPC
         #endif
@@ -257,13 +257,13 @@ int main(int argc, char*argv[]){
         
         #ifdef RPC_TEST
         gFarm.add_emitter(new ff_dAreceiver(                                                         //RPC
-            new ff_dCommRPC(g3, false, true, {&G1toG3_rpc, &G2toG3_rpc}, {},                         //RPC
+            new TransportRPC(g3, false, true, {&G1toG3_rpc, &G2toG3_rpc}, {},                         //RPC
                     {std::make_pair(0, 0)}, {}),                                                     //RPC
             1, -1, 1, ntask));                                                                             //RPC
         #endif
 
         #ifdef TCP_TEST
-        gFarm.add_emitter(new ff_dAreceiver(new ff_dCommTCP(g3, false),2, -1, 1));                      
+        gFarm.add_emitter(new ff_dAreceiver(new TransportTCP(g3, false),2, -1, 1));                      
 		#endif
 		Sink *sink = new Sink(verbose);	
 		gFarm.add_workers({new WrapperIN(sink, 1, true)});

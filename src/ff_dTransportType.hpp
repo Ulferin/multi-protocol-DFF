@@ -6,13 +6,13 @@
 #include <ff/distributed/ff_network.hpp>
 #include <ff/distributed/ff_batchbuffer.hpp>
 #include <mpi.h>
-#include "ff_dCompI.hpp"
+#include "ff_dTransportTypeI.hpp"
 #include "ff_dAreceiverComp.hpp"
 
 using namespace ff;
 
 #ifndef DFF_EXCLUDE_MPI
-class ff_dCommMPI: public ff_dComp {
+class TransportMPI: public TransportType {
 protected:
     ff_dAreceiver* receiver;        // FIXME: this should become a callback instead of whole object
     std::set<int> internalRanks;
@@ -21,8 +21,8 @@ protected:
     size_t neos = 0;
 
 public:
-    ff_dCommMPI(size_t input_channels)
-		: ff_dComp(input_channels) {}
+    TransportMPI(size_t input_channels)
+		: TransportType(input_channels) {}
 
     virtual void init(ff_monode_t<message_t>* data) {
         receiver = (ff_dAreceiver*)data;
@@ -107,7 +107,7 @@ protected:
     
 };
 
-class ff_dCommMPIS: public ff_dCompS {
+class TransportMPIS: public TransportTypeS {
 
 protected:
     class batchBuffer {
@@ -242,17 +242,17 @@ protected:
     }
 
 public:
-    ff_dCommMPIS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+    TransportMPIS(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-		: ff_dCompS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
+		: TransportTypeS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
 
-    ff_dCommMPIS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
+    TransportMPIS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-            : ff_dCompS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
+            : TransportTypeS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
 
 
     virtual int send(message_t* task, bool external) {
@@ -338,7 +338,7 @@ protected:
 #endif
 
 
-class ff_dCommTCP: public ff_dComp {
+class TransportTCP: public TransportType {
 
 protected:
 
@@ -478,8 +478,8 @@ protected:
     }
 
 public:
-    ff_dCommTCP(ff_endpoint handshakeAddr, size_t input_channels)
-		: ff_dComp(input_channels), handshakeAddr(handshakeAddr) {}
+    TransportTCP(ff_endpoint handshakeAddr, size_t input_channels)
+		: TransportType(input_channels), handshakeAddr(handshakeAddr) {}
 
 
     virtual void init(ff_monode_t<message_t>* data) {
@@ -507,7 +507,7 @@ public:
 
             switch(select(fdmax+1, &tmpset, NULL, NULL, &wait_time)){
                 case -1: error("Error on selecting socket\n"); return -1;
-                case  0: {std::cout << "Timeout " << handshakeAddr.groupName << "\n"; return 1;}
+                case  0: {return 1;}
             }
 
             for(int idx=0; idx <= fdmax; idx++){
@@ -564,7 +564,7 @@ protected:
 };
 
 
-class ff_dCommTCPS: public ff_dCompS {
+class TransportTCPS: public TransportTypeS {
 
 protected:
     std::map<int, unsigned int> socketsCounters;
@@ -701,17 +701,17 @@ protected:
 
 
 public:
-    ff_dCommTCPS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+    TransportTCPS(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-		: ff_dCompS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
+		: TransportTypeS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
 
-    ff_dCommTCPS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
+    TransportTCPS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-            : ff_dCompS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
+            : TransportTypeS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
 
 
     virtual int send(message_t* task, bool external) {

@@ -49,9 +49,9 @@
 #include <execution>
 #include <algorithm>
 
-#include "ff_dCommunicator.hpp"
-#include "ff_dAreceiver.hpp"
-#include "ff_dAsender.hpp"
+#include <ff_dCommunicator.hpp>
+#include <ff_dAreceiverComp.hpp>
+#include <ff_dAsenderComp.hpp>
 
 using namespace ff;
 
@@ -276,17 +276,17 @@ int main(int argc, char*argv[]){
         gFarm.add_workers({new WrapperOUT(new Source(ntask), 1, 1, 0, true)});                                              //ORIGINAL
 
         gFarm.add_collector(new ff_dAsender(                                                                 //RPC
-                new ff_dCommRPCS({g1,g2}, {&G0toG1_rpc, &G0toG2_rpc}, "G0", {}, false, true), -1, 1));       //RPC
+                new TransportRPCS({g1,g2}, {&G0toG1_rpc, &G0toG2_rpc}, "G0", {}, false, true), -1, 1));       //RPC
 
         gFarm.run_and_wait_end();
         ABT_finalize();
         return 0;
     } else if (atoi(argv[1]) == 1){
         gFarm.add_emitter(new ff_dAreceiver(                                                                 //RPC
-            new ff_dCommRPC(g1, true, true, {&G0toG1_rpc, &G2toG1_rpc}, {0,1}, {{0, 0}}, {"G2"}),            //RPC
+            new TransportRPC(g1, true, true, {&G0toG1_rpc, &G2toG1_rpc}, {0,1}, {{0, 0}}, {"G2"}),            //RPC
             2, -1, 1));                                                                                      //RPC
         gFarm.add_collector(new ff_dAsender(                                                                 //RPC
-                new ff_dCommRPCS({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, true, true), -1, 1));    //RPC
+                new TransportRPCS({g2,g3}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", {"G2"}, true, true), -1, 1));    //RPC
 
         gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
@@ -306,11 +306,11 @@ int main(int argc, char*argv[]){
 
     } else if (atoi(argv[1]) == 2) {
         gFarm.add_emitter(new ff_dAreceiver(                                                                 //RPC
-            new ff_dCommRPC(g2, true, true, {&G0toG2_rpc, &G1toG2_rpc}, {2,3}, {{1, 0}}, {"G1"}),      //RPC
+            new TransportRPC(g2, true, true, {&G0toG2_rpc, &G1toG2_rpc}, {2,3}, {{1, 0}}, {"G1"}),      //RPC
             2, -1, 1));                                                                                      //RPC
         
         gFarm.add_collector(new ff_dAsender(                                                                 //RPC
-                new ff_dCommRPCS({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}, true, true), -1, 1));   //RPC
+                new TransportRPCS({g1, g3}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", {"G1"}, true, true), -1, 1));   //RPC
 
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
@@ -347,7 +347,7 @@ int main(int argc, char*argv[]){
         // gFarm.add_emitter(new ff_dreceiver(g3, 2));                                                  //ORIGINAL
         
         gFarm.add_emitter(new ff_dAreceiver(                                                         //RPC
-            new ff_dCommRPC(g3, false, true, {&G1toG3_rpc, &G2toG3_rpc}, {},                         //RPC
+            new TransportRPC(g3, false, true, {&G1toG3_rpc, &G2toG3_rpc}, {},                         //RPC
                     {std::make_pair(0, 0)}, {}),                                                     //RPC
             2, -1, 1));                                                                             //RPC
 
