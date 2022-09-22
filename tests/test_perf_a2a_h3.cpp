@@ -129,6 +129,7 @@ struct LNode : ff_monode_t<ExcType>{
         processedItems++;
         for(int i = 0; i < numWorker; i++) {
             if (execTime) active_delay(this->execTime);
+            printf("Allocating %ld\n", dataLength);
             ff_send_out_to(allocateExcType(dataLength, setdata), i);
         }
         return this->GO_ON;

@@ -142,8 +142,8 @@ int main(int argc, char*argv[]){
 
     std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt;
     if (myrank == 0){
-        rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector({0});
-        rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector({1});
+        rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector<int>({0});
+        rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector<int>({1});
         SenderManager* sendMaster = new SenderManager({{{g1.groupName, g2.groupName},
             new TransportRPCS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, {&G0toG1_rpc, &G0toG2_rpc}, "G0")
         }}, &rt);
@@ -157,8 +157,8 @@ int main(int argc, char*argv[]){
         return 0;
     } else if (myrank == 1){
         printf("Listening on port: %d\n", g1.port);
-        rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
-        rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
+        rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector<int>({1});
+        rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
         ReceiverManager *recMaster = new ReceiverManager({new TransportRPC(g1, 2, {&G0toG1_rpc, &G2toG1_rpc}, true)}, {{0, 0}});
         SenderManager* sendMaster = new SenderManager({{{g2.groupName, g3.groupName}, new TransportRPCS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", true)}}, &rt);
@@ -175,8 +175,8 @@ int main(int argc, char*argv[]){
 
     } else if (myrank == 2) {
         printf("Listening on port: %d\n", g2.port);
-        rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
-        rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
+        rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector<int>({0});
+        rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
         ReceiverManager *recMaster = new ReceiverManager({new TransportRPC(g2, 2, {&G0toG2_rpc, &G1toG2_rpc}, true)}, {{1, 0}});
         SenderManager* sendMaster = new SenderManager({{{g1.groupName, g3.groupName}, new TransportRPCS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", true)}}, &rt);

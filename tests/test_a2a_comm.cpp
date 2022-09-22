@@ -70,9 +70,9 @@
 #include <mutex>
 #include <map>
 
-#include "ff_dAreceiver.hpp"
-#include "ff_dAsender.hpp"
-#include "ff_dCommunicator.hpp"
+#include <ff_dAreceiverComp.hpp>
+#include <ff_dAsenderComp.hpp>
+#include <ff_dCommunicator.hpp>
 
 using namespace ff;
 std::mutex mtx;

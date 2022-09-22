@@ -31,6 +31,9 @@ all: $(TARGETS)
 rpc_cl_test.out: test_a2a_rpc.cpp $(MARGO_FF_DEPS)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS_MARGO) $(DEFINES) -DRPC_TEST
 
+perf.out: test_perf_a2a_h3.cpp $(FF_DEPS)
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES)
+
 # pipe_cl_test.out: test_pipe.cpp $(FF_DEPS)
 # 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS) $(DEFINES) -DRPC_TEST
 

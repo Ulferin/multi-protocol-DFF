@@ -144,8 +144,8 @@ int main(int argc, char*argv[]){
     ff_a2a a2a;
     std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt;
     if (myrank == 0){
-        rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector({0});
-        rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector({1});
+        rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector<int>({0});
+        rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector<int>({1});
         
         SenderManager* sendMaster = new SenderManager({{{g1_tcp.groupName, g2_tcp.groupName}, new TransportTCPS({{ChannelType::FWD, g1_tcp},{ChannelType::FWD, g2_tcp}}, "G0")}}, &rt);
         // SenderManager* sendMaster = new SenderManager({{{g1.groupName, g2.groupName}, new TransportMPIS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, "G0")}}, &rt);
@@ -158,8 +158,8 @@ int main(int argc, char*argv[]){
         if (MPI_Finalize() != MPI_SUCCESS) abort();
         return 0;
     } else if (myrank == 1){
-        rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector({1});
-        rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
+        rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector<int>({1});
+        rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
         // ReceiverManager *recMaster = new ReceiverManager({new TransportMPI(2)}, {{0, 0}});
         ReceiverManager *recMaster = new ReceiverManager({new TransportMPI(1),new TransportTCP(g1_tcp, 1)}, {{0, 0}});
@@ -177,8 +177,8 @@ int main(int argc, char*argv[]){
         a2a.add_secondset<ff_node>({new ff_comb(new CollectorAdapter(sink, {0}, true), new WrapperOUT(new ForwarderNode(sink->serializeF, sink->freetaskF), 0, 1, 0, true)), new SquareBoxRight});
 
     } else if (myrank == 2) {
-        rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector({0});
-        rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector({0});
+        rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector<int>({0});
+        rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
         ReceiverManager *recMaster = new ReceiverManager({new TransportMPI(1),new TransportTCP(g2_tcp, 1)}, {{1, 0}});
         // ReceiverManager *recMaster = new ReceiverManager({new TransportMPI(2)}, {{1, 0}});
