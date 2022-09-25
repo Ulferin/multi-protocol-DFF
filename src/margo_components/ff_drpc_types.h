@@ -35,27 +35,24 @@ struct ff_endpoint_rpc : public ff_endpoint {
 /* --- MARGO RPCs declaration */
 
 // RPC function used to send stream elements between external groups
-void ff_rpc_comm(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc_comm);
-
-// RPC function used to send stream elements between internal groups
-void ff_rpc_internal_comm(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc_internal_comm);
+void ff_rpc(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc);
 
 // RPC function used to signal EOS to remote groups
-void ff_rpc_shutdown_comm(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_comm);
-
-void ff_rpc_shutdown_internal_comm(hg_handle_t handle);
-DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal_comm);
+void ff_rpc_shutdown(hg_handle_t handle);
+DECLARE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
 
 /* --- MARGO RPCs declaration --- */
 
 
 /* --- RPC types and packing routines --- */
 
+// Mercury macro to register base data types and packing routine
+MERCURY_GEN_PROC(ff_rpc_shutdown_in_t, ((hg_bool_t)(external)))
+
 typedef struct {
-    message_t*   task;
+    message_t*  task;
+    hg_bool_t   external;
 } ff_rpc_in_t;
 
 
@@ -72,6 +69,10 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
 
         case HG_ENCODE:
         {
+            ret = hg_proc_hg_bool_t(proc, &struct_data->external);
+            if(ret != HG_SUCCESS)
+                break;
+
             ret = hg_proc_int32_t(proc, &struct_data->task->chid);
             if(ret != HG_SUCCESS)
                 break;
@@ -96,6 +97,10 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
         { 
             message_t* task = new message_t();
             
+            ret = hg_proc_hg_bool_t(proc, &struct_data->external);
+            if(ret != HG_SUCCESS)
+                break;
+
             ret = hg_proc_int32_t(proc, &task->chid);
             if(ret != HG_SUCCESS)
                 break;

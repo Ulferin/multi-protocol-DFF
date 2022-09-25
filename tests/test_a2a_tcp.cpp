@@ -57,7 +57,6 @@ struct Sink : ff_minode_t<std::string>{
     int sinkID;
     Sink(int id): sinkID(id) {}
     std::string* svc(std::string* in){
-        printf("[Sink] Received task %s\n", std::to_string(get_channel_id()).c_str());
         std::string* output = new std::string(*in + " received by Sink " + std::to_string(sinkID) + " from " +  std::to_string(get_channel_id()));
         delete in;
         return output;
@@ -67,7 +66,7 @@ struct Sink : ff_minode_t<std::string>{
 struct StringPrinter : ff_node_t<std::string>{
     std::string* svc(std::string* in){
         const std::lock_guard<std::mutex> lock(mtx);
-        std::cout << "Received something! Addr:" << in << "\n";
+        // std::cout << "Received something! Addr:" << in << "\n";
 #if 1
         try {
             std::cout << *in << std::endl;

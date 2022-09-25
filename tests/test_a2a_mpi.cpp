@@ -131,13 +131,13 @@ int main(int argc, char*argv[]){
     ff_endpoint g3(3);
     g3.groupName = "G3";
 
-    ff_endpoint g1_tcp("127.0.0.1", 8001);
+    ff_endpoint g1_tcp("38.242.220.197", 65000);
     g1_tcp.groupName = "G1";
 
-    ff_endpoint g2_tcp("127.0.0.1", 8002);
+    ff_endpoint g2_tcp("38.242.220.197", 65001);
     g2_tcp.groupName = "G2";
 
-    ff_endpoint g3_tcp("127.0.0.1", 8003);
+    ff_endpoint g3_tcp("192.168.1.17", 56000);
     g3_tcp.groupName = "G3";
 
     ff_farm gFarm;

@@ -21,14 +21,7 @@ protected:
 public:
     ReceiverManager(std::vector<TransportType*> components,
         std::map<int, int> routingTable = {std::make_pair(0,0)})
-          :components(std::move(components)), routingTable(routingTable){
-        
-        // NOTE: for backward compatibility with Margo
-        for (auto &&component : this->components) {
-            component->boot_component();
-        }
-        
-    }
+          :components(std::move(components)), routingTable(routingTable){}
 
     void init(ff_monode_t<message_t>* receiver) {
         // First initialize receivers in order to allow them to handle handshakes        
@@ -114,13 +107,7 @@ public:
     SenderManager(
         std::vector<std::pair<std::set<std::string>, TransportTypeS*>> components,
         precomputedRT_t* rt)
-        : components(std::move(components)), rt(rt) {
-
-        // NOTE: for backward compatibility with Margo
-        for (auto &&[_, component] : this->components) {
-            component->boot_component();
-        }
-    }
+        : components(std::move(components)), rt(rt) {}
 
 
     int init() {

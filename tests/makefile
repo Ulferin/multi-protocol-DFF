@@ -1,5 +1,5 @@
 CXX = g++-10
-CXXFLAGS = -O3 -std=c++20 -finline-functions
+CXXFLAGS = -O3 -std=c++20 -finline-functions -DNDEBUG
 
 # IMPORTANT: change these according to the installation path of Margo-related libraries
 INSTALL_PATH = ${HOME}/install/lib

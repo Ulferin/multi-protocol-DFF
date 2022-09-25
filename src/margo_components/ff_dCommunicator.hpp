@@ -50,27 +50,14 @@ protected:
 
 
     void register_rpcs(margo_instance_id* mid, void* data) {
-        hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc_comm);
-        // NOTE: we actually want a response in the non-blocking version
+        hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc", ff_rpc_in_t, void, ff_rpc);
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, data, NULL);
 
         id = MARGO_REGISTER(*mid, "ff_rpc_shutdown",
-                void, void, ff_rpc_shutdown_comm);
+                ff_rpc_shutdown_in_t, void, ff_rpc_shutdown);
         margo_registered_disable_response(*mid, id, HG_TRUE);
         margo_register_data(*mid, id, data, NULL);
-
-        if (internal) {
-            hg_id_t id = MARGO_REGISTER(*mid, "ff_rpc_internal",
-                    ff_rpc_in_t, void, ff_rpc_internal_comm);
-            margo_registered_disable_response(*mid, id, HG_TRUE);
-            margo_register_data(*mid, id, data, NULL);
-
-            id = MARGO_REGISTER(*mid, "ff_rpc_shutdown_internal",
-                    void, void, ff_rpc_shutdown_internal_comm);
-            margo_registered_disable_response(*mid, id, HG_TRUE);
-            margo_register_data(*mid, id, data, NULL);
-        }
     }
 
 
@@ -180,13 +167,7 @@ protected:
         return 0;
     }
 
-public:
-    TransportRPC(ff_endpoint handshakeAddr, size_t input_channels,
-        std::vector<ff_endpoint_rpc*> endRPC, bool internal=false, bool busy=true):
-        TransportType(input_channels), handshakeAddr(handshakeAddr),
-        endRPC(std::move(endRPC)), internal(internal), busy(busy) {}
-
-    virtual void boot_component() {
+    void boot_component() {
         init_ABT();
         for (auto &&addr: this->endRPC)
         {
@@ -195,6 +176,14 @@ public:
             mids.push_back(mid);
         }
     }
+
+public:
+    TransportRPC(ff_endpoint handshakeAddr, size_t input_channels,
+        std::vector<ff_endpoint_rpc*> endRPC, bool internal=false, bool busy=true):
+        TransportType(input_channels), handshakeAddr(handshakeAddr),
+        endRPC(std::move(endRPC)), internal(internal), busy(busy) {
+            this->boot_component();
+        }
 
     virtual void init(ff_monode_t<message_t> *data) {
         for (auto &&mid: mids)
@@ -381,19 +370,8 @@ protected:
         margo_registered_disable_response(*mid, ff_erpc_id, HG_TRUE);
 
         ff_eshutdown_id = MARGO_REGISTER(*mid, "ff_rpc_shutdown",
-                void, void, NULL);
+                ff_rpc_shutdown_in_t, void, NULL);
         margo_registered_disable_response(*mid, ff_eshutdown_id, HG_TRUE);
-
-        // Extended to register internal communication RPCs
-        if(internal) {
-            ff_irpc_id = MARGO_REGISTER(*mid, "ff_rpc_internal",
-                    ff_rpc_in_t, void, NULL);
-            margo_registered_disable_response(*mid, ff_irpc_id, HG_TRUE);
-
-            ff_ishutdown_id = MARGO_REGISTER(*mid, "ff_rpc_shutdown_internal",
-                    void, void, NULL);
-            margo_registered_disable_response(*mid, ff_ishutdown_id, HG_TRUE);
-        }
     }
 
     int getNextSck(bool external) {
@@ -422,22 +400,25 @@ protected:
         return h;
     }
 
-    void forwardRequest(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
+    void forwardRequest(message_t* task, hg_bool_t external, ff_endpoint_rpc* endp) {
         ff_rpc_in_t in;
         in.task = new message_t(task->data.getPtr(), task->data.getLen(), true);
         in.task->chid = task->chid;
         in.task->sender = task->sender;
+        in.external = external;
 
-        hg_handle_t h = shipRPC(endp, rpc_id);
+        hg_handle_t h = shipRPC(endp, ff_erpc_id);
         margo_forward(h, &in);
         margo_destroy(h);
         
         delete in.task;
     }
 
-    void forwardEOS(message_t* task, hg_id_t rpc_id, ff_endpoint_rpc* endp) {
-        hg_handle_t h = shipRPC(endp, rpc_id);
-        margo_forward(h, NULL);
+    void forwardEOS(message_t* task, hg_bool_t external, ff_endpoint_rpc* endp) {
+        ff_rpc_shutdown_in_t in;
+        in.external = external;
+        hg_handle_t h = shipRPC(endp, ff_eshutdown_id);
+        margo_forward(h, &in);
         margo_destroy(h);
     }
 
@@ -447,13 +428,17 @@ public:
         std::vector<ff_endpoint_rpc*> endRPC,
         std::string gName = "", bool internal=false, bool busy = true):
             TransportTypeS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
-            endRPC(std::move(endRPC)), internal(internal) {}
+            endRPC(std::move(endRPC)), internal(internal) {
+                this->boot_component();
+            }
 
     TransportRPCS(std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints,
         std::vector<ff_endpoint_rpc*> endRPC,
         std::string gName = "", bool internal=false, bool busy = true):
             TransportTypeS(destEndpoints, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
-            endRPC(std::move(endRPC)), internal(internal) {}
+            endRPC(std::move(endRPC)), internal(internal) {
+                this->boot_component();
+            }
 
     virtual void boot_component() {
         init_ABT();
@@ -487,11 +472,9 @@ public:
             
         if(external) sck = dest2Socket[{task->chid, task->feedback ? ChannelType::FBK : ChannelType::FWD}]; 
         else sck = dest2Socket[{task->chid, ChannelType::INT}];
-
-        rpc_id = external ? ff_erpc_id : ff_irpc_id;
         
         endp = sock2End[sck];
-        forwardRequest(task, rpc_id, endp);
+        forwardRequest(task, external, endp);
 
         return 0;
     }
@@ -499,12 +482,12 @@ public:
     virtual void notify(ssize_t id, bool external) {
         if(external) 
             for (auto& sck : sockets){
-                forwardRequest(new message_t(id, -2), ff_erpc_id, sock2End[sck]);
+                forwardRequest(new message_t(id, -2), external, sock2End[sck]);
             }
         else {
             // send the EOS to all the internal connections
             for(const auto& sck : internalSockets){
-                forwardEOS(NULL, ff_ishutdown_id, sock2End[sck]);
+                forwardEOS(NULL, false, sock2End[sck]);
             }
         }
     }
@@ -518,7 +501,7 @@ public:
         }
 
         for(auto& sck : sockets){
-            forwardEOS(NULL, ff_eshutdown_id, sock2End[sck]);
+            forwardEOS(NULL, true, sock2End[sck]);
         }
 
         for (auto &&mid : proto2Margo)
@@ -585,7 +568,6 @@ public:
     std::map<int, ff_endpoint_rpc*>             sock2End; 
 
     hg_id_t                                     ff_erpc_id, ff_eshutdown_id;
-    hg_id_t                                     ff_irpc_id, ff_ishutdown_id;
 
     std::vector<int>                            sockets;
     std::map<std::pair<int, ChannelType>, int>  dest2Socket;
@@ -598,7 +580,7 @@ public:
 };
 
 
-void ff_rpc_comm(hg_handle_t handle) {
+void ff_rpc(hg_handle_t handle) {
     hg_return_t             hret;
     ff_rpc_in_t             in;
     const struct hg_info*   info;
@@ -618,21 +600,21 @@ void ff_rpc_comm(hg_handle_t handle) {
     receiver->received++;
     if(in.task->chid == -2)
         receiver->registerLogicalEOS(in.task->sender);
-    receiver->forward(in.task, false);
+    receiver->forward(in.task, !(in.external));
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
 
     return;
 }
-DEFINE_MARGO_RPC_HANDLER(ff_rpc_comm)
+DEFINE_MARGO_RPC_HANDLER(ff_rpc)
 
 
-void ff_rpc_internal_comm(hg_handle_t handle) {
+void ff_rpc_shutdown(hg_handle_t handle) {
     hg_return_t             hret;
-    ff_rpc_in_t             in;
     const struct hg_info*   info;
     margo_instance_id       mid;
+    ff_rpc_shutdown_in_t    in;
 
     info = margo_get_info(handle);
     assert(info);
@@ -644,58 +626,13 @@ void ff_rpc_internal_comm(hg_handle_t handle) {
 
     ff_dAreceiver* receiver =
         (ff_dAreceiver*)margo_registered_data(mid, info->id);
-
-    receiver->received++;
-    if(in.task->chid == -2)
-        receiver->registerLogicalEOS(in.task->sender);
-    else receiver->forward(in.task, true);
-
-    margo_free_input(handle, &in);
-    margo_destroy(handle);
-
-    return;
-}
-DEFINE_MARGO_RPC_HANDLER(ff_rpc_internal_comm)
-
-
-void ff_rpc_shutdown_comm(hg_handle_t handle) {
-    const struct hg_info*   info;
-    margo_instance_id       mid;
-
-    info = margo_get_info(handle);
-    assert(info);
-    mid = margo_hg_info_get_instance(info);
-    assert(mid != MARGO_INSTANCE_NULL);
-
-    ff_dAreceiver* receiver =
-        (ff_dAreceiver*)margo_registered_data(mid, info->id);
     
-    receiver->registerEOS(false);
+    receiver->registerEOS(!(in.external));
     margo_destroy(handle);
 
     return;
 }
-DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown_comm);
-
-
-void ff_rpc_shutdown_internal_comm(hg_handle_t handle) {
-    const struct hg_info*   info;
-    margo_instance_id       mid;
-
-    info = margo_get_info(handle);
-    assert(info);
-    mid = margo_hg_info_get_instance(info);
-    assert(mid != MARGO_INSTANCE_NULL);
-
-    ff_dAreceiver* receiver =
-        (ff_dAreceiver*)margo_registered_data(mid, info->id);
-    
-    receiver->registerEOS(true);
-    margo_destroy(handle);
-
-    return;
-}
-DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown_internal_comm);
+DEFINE_MARGO_RPC_HANDLER(ff_rpc_shutdown);
 
 
 #endif //FFDCOMM

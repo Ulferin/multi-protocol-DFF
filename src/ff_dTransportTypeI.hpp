@@ -17,8 +17,6 @@ class TransportType {
 protected:
 
 public:
-    // NOTE: only for backward compatibility with Margo components
-    virtual void boot_component() {return;}
     virtual void init(ff_monode_t<message_t>*) = 0;
     virtual int comm_listen() = 0;
     virtual void finalize() = 0;
@@ -47,8 +45,6 @@ class TransportTypeS {
 protected:
 
 public:
-    // NOTE: only for backward compatibility with Margo components
-    virtual void boot_component() {return;}
     virtual int send(message_t* task, bool external) = 0;
     virtual void finalize() = 0;
 

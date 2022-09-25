@@ -55,29 +55,60 @@ public:
                 error("Error on Recv Receiver primo in alto\n");
             bool feedback = ChannelType::FBK == rank2ChannelType[status.MPI_SOURCE];
             assert(headers[0]*3+1 == headersLen);
+            if (headers[0] == 1) {
+                size_t sz = headers[3];
 
-            size_t sz = headers[3];
-
-            if (sz == 0){
-                if (headers[2] == -2){
-                    receiver->registerLogicalEOS(headers[1]);
+                if (sz == 0){
+                    if (headers[2] == -2){
+                        receiver->registerLogicalEOS(headers[1]);
+                        return 1;
+                    }
+                    neos++;
+                    receiver->registerEOS(rank2ChannelType[status.MPI_SOURCE] == ChannelType::INT);
                     return 1;
                 }
-                neos++;
-                receiver->registerEOS(rank2ChannelType[status.MPI_SOURCE] == ChannelType::INT);
-                return 1;
+
+                char* buff = new char[sz];
+                if (MPI_Recv(buff,sz,MPI_BYTE, status.MPI_SOURCE, DFF_TASK_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) != MPI_SUCCESS)
+                    error("Error on Recv Receiver Payload\n");
+                receiver->received++;
+                message_t* out = new message_t(buff, sz, true);
+                out->sender = headers[1];
+                out->chid   = headers[2];
+                out->feedback = feedback;
+
+                receiver->forward(out, rank2ChannelType[status.MPI_SOURCE] == ChannelType::INT);
+            } else {
+                int size;
+                MPI_Status localStatus;
+                MPI_Probe(status.MPI_SOURCE, DFF_TASK_TAG, MPI_COMM_WORLD, &localStatus);
+                MPI_Get_count(&localStatus, MPI_BYTE, &size);
+                char* buff = new char[size]; // this can be reused!! 
+                MPI_Recv(buff, size, MPI_BYTE, localStatus.MPI_SOURCE, DFF_TASK_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                size_t head = 0;
+                for (size_t i = 0; i < (size_t)headers[0]; i++){
+                    size_t sz = headers[3*i+3];
+                    if (sz == 0){
+                        if (headers[3*i+2] == -2){
+                            receiver->registerLogicalEOS(headers[3*i+1]);
+                            return 1;
+                        }
+                        receiver->registerEOS(rank2ChannelType[status.MPI_SOURCE] == ChannelType::INT);
+                        assert(i+1 == (size_t)headers[0]);
+                        break;
+                    }
+                    char* outBuff = new char[sz];
+                    memcpy(outBuff, buff+head, sz);
+                    head += sz;
+                    message_t* out = new message_t(outBuff, sz, true);
+                    out->sender = headers[3*i+1];
+                    out->chid = headers[3*i+2];
+                    out->feedback = feedback;
+
+                    receiver->forward(out, rank2ChannelType[status.MPI_SOURCE] == ChannelType::INT);
+                }
+                delete [] buff;
             }
-
-            char* buff = new char[sz];
-            if (MPI_Recv(buff,sz,MPI_BYTE, status.MPI_SOURCE, DFF_TASK_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) != MPI_SUCCESS)
-                error("Error on Recv Receiver Payload\n");
-            receiver->received++;
-            message_t* out = new message_t(buff, sz, true);
-            out->sender = headers[1];
-            out->chid   = headers[2];
-            out->feedback = feedback;
-
-            receiver->forward(out, rank2ChannelType[status.MPI_SOURCE] == ChannelType::INT);
             return 1;
         }
         
@@ -409,13 +440,13 @@ protected:
 		} break;
 		case 0: return -1;
         }
-		// // always sending back the acknowledgement
-        // if (writen(sck, reinterpret_cast<char*>(&ACK), sizeof(ack_t)) < 0){
-        //     if (errno != ECONNRESET && errno != EPIPE) {
-        //         error("Error sending back ACK to the sender (errno=%d)\n",errno);
-        //         return -1;
-        //     }
-        // }
+		// always sending back the acknowledgement
+        if (writen(sck, reinterpret_cast<char*>(&ACK), sizeof(ack_t)) < 0){
+            if (errno != ECONNRESET && errno != EPIPE) {
+                error("Error sending back ACK to the sender (errno=%d)\n",errno);
+                return -1;
+            }
+        }
 		ChannelType t = sck2ChannelType[sck];
         requestSize = ntohl(requestSize);
         for(int i = 0; i < requestSize; i++)
@@ -550,16 +581,16 @@ public:
 
 
 protected:
-    ff_endpoint             handshakeAddr;
-    ff_dAreceiver*          receiver;
+    ff_endpoint                 handshakeAddr;
+    ff_dAreceiver*              receiver;
 
-    std::map<int, ChannelType> sck2ChannelType;
-    int                     listen_sck;
-    int                     last_receive_fd = -1;
-    int                     fdmax;
-    fd_set                  set, tmpset;
-    size_t                  neos = 0;
-    ack_t ACK;
+    std::map<int, ChannelType>  sck2ChannelType;
+    int                         listen_sck;
+    int                         last_receive_fd = -1;
+    int                         fdmax;
+    fd_set                      set, tmpset;
+    size_t                      neos = 0;
+    ack_t                       ACK;
 
 };
 
@@ -573,7 +604,6 @@ protected:
     std::vector<int> internalSockets;
     int last_rr_socket = -1;
     int last_rr_socket_Internal = -1;
-    int internalMessageOTF;
 
     int getMostFilledBufferSck(bool feedback){
         int sckMax = 0;
@@ -610,7 +640,37 @@ protected:
     }
 
 
-    virtual int handshakeHandler(const int sck, ChannelType ct){    
+     int waitAckFrom(int sck){
+        while (socketsCounters[sck] == 0){
+            for(auto& [sck_, counter] : socketsCounters){
+                int r; ack_t a;
+                if ((r = recvnnb(sck_, reinterpret_cast<char*>(&a), sizeof(ack_t))) != sizeof(ack_t)){
+                    if (errno == EWOULDBLOCK){
+                        assert(r == -1);
+                        continue;
+                    }
+                    perror("recvnnb ack");
+                    return -1;
+                } else {
+                    counter++;
+                }
+                
+            }
+			
+            if (socketsCounters[sck] == 0){
+                tmpset = set;
+                if (select(fdmax + 1, &tmpset, NULL, NULL, NULL) == -1){
+                    perror("select");
+                    return -1;
+                }
+            }
+        }
+        return 1;
+    }
+
+
+
+    virtual int handshakeHandler(const int sck, ChannelType ct) {
         size_t sz = htobe64(gName.size());
         struct iovec iov[3];
         iov[0].iov_base = &ct;
@@ -750,10 +810,10 @@ public:
 
             socketsCounters[sck] = isInternal ? internalMessageOTF : messageOTF;
             batchBuffers.emplace(std::piecewise_construct, std::forward_as_tuple(sck), std::forward_as_tuple(this->batchSize, ct, [this, sck](struct iovec* v, int size) -> bool {
-                // if (this->socketsCounters[sck] == 0 && this->waitAckFrom(sck) == -1){
-                //     error("Errore waiting ack from socket inside the callback\n");
-                //     return false;
-                // }
+                if (this->socketsCounters[sck] == 0 && this->waitAckFrom(sck) == -1){
+                    error("Errore waiting ack from socket inside the callback\n");
+                    return false;
+                }
 
                 if (writevn(sck, v, size) < 0){
                     error("Error sending the iovector inside the callback!\n");
@@ -773,12 +833,11 @@ public:
             }
             
             if(handshakeHandler(sck, ct) < 0) {
-                error("Error in handshake");
-                return -1;
-            }
+				error("Error in handshake");
+				return -1;
+			}
             FD_SET(sck, &set);
             if(sck > fdmax) fdmax = sck;
-            std::cout << gName << " done connecting to: " << ep.address << " gName: " << ep.groupName << "\n";
         }
 
         // we can erase the list of endpoints
@@ -794,10 +853,10 @@ public:
         else {
             for(const auto& sck : internalSockets) {
                 if (batchBuffers[sck].sendEOS()<0) {
-					error("sending EOS to internal connections\n");
-				}					
-				shutdown(sck, SHUT_WR);
-			}
+                    error("sending EOS to internal connections\n");
+                }
+                shutdown(sck, SHUT_WR);
+            }
         }
     }
 
@@ -809,7 +868,43 @@ public:
             shutdown(sck, SHUT_WR);
         }
 
-        for(const auto& [sck, _] : socketsCounters) close(sck);
+        // here we wait all acks from all connections
+		size_t totalack  = internalSockets.size()*internalMessageOTF;
+		totalack        += socks.size()*messageOTF;
+		size_t currentack = 0;
+		for(const auto& [_, counter] : socketsCounters)
+			currentack += counter;
+
+		ack_t a;
+		while(currentack<totalack) {
+			for(auto scit = socketsCounters.begin(); scit != socketsCounters.end();) {
+				auto sck      = scit->first;
+				auto& counter = scit->second;
+
+				switch(recvnnb(sck, (char*)&a, sizeof(a))) {
+				case 0:
+				case -1: {
+					if (errno == EWOULDBLOCK) {
+						++scit;
+						continue;
+					}
+					decltype(internalSockets)::iterator it;
+					it = std::find(internalSockets.begin(), internalSockets.end(), sck);
+					if (it != internalSockets.end())
+						currentack += (internalMessageOTF-counter);
+					else
+						currentack += (messageOTF-counter);
+					socketsCounters.erase(scit++);
+				} break;
+				default: {
+					currentack++;
+					counter++;
+					++scit;					
+				}					
+				}
+			}
+		}
+		for(const auto& [sck, _] : socketsCounters) close(sck);
     }
 
 };

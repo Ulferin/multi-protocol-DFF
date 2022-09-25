@@ -127,9 +127,8 @@ struct LNode : ff_monode_t<ExcType>{
 
     ExcType* svc(ExcType* in){
         processedItems++;
+        if (execTime) active_delay(this->execTime);
         for(int i = 0; i < numWorker; i++) {
-            if (execTime) active_delay(this->execTime);
-            printf("Allocating %ld\n", dataLength);
             ff_send_out_to(allocateExcType(dataLength, setdata), i);
         }
         return this->GO_ON;
@@ -150,6 +149,7 @@ struct RNode : ff_minode_t<ExcType>{
     ExcType* svc(ExcType* in){
         processedItems++;
         if (execTime) active_delay(this->execTime);
+        printf("Waiting: %d\n", processedItems);
         // std::cout << "SERIALIZABLE? " << isSerializable() << "\n";
         if (in->C[in->clen-1] != 'F') {
             ff::cout << "ERROR: " << in->C[in->clen-1] << " != 'F'\n";
@@ -321,7 +321,7 @@ int main(int argc, char*argv[]){
 
         printf("-- Testing %s communication\n", test_type->c_str());
         int total_task = items * 2;
-        int expected_completion = std::max(items * execTimeSource, items * execTimeSink);
+        int expected_completion = std::max(items * execTimeSource/2, items * execTimeSink);
         
         printf("Configuration || ntask: %d - LNode wait (ms per task): %d - RNode wait (ms per task): %d\n", items, execTimeSource, execTimeSink);
         printf("Total number of task to the Sink node: %d\n", total_task);
