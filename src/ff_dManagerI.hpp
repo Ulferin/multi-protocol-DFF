@@ -1,7 +1,6 @@
 #ifndef FF_DCOMM_MASTER_I
 #define FF_DCOMM_MASTER_I
 
-// #include "ff_dAreceiverComp.hpp"
 #include <ff/ff.hpp>
 #include <ff/dff.hpp>
 #include <ff/distributed/ff_network.hpp>

@@ -23,21 +23,90 @@
 #include <mpi.h>
 
 #include "margo_components/ff_dCommunicator.hpp"
-#include "ff_dAreceiverComp.hpp"
-#include "ff_dAsenderComp.hpp"
+#include "ff_dMPreceiver.hpp"
+#include "ff_dMPsender.hpp"
 #include "ff_dManager.hpp"
 
 using namespace ff;
 std::mutex mtx;
 
-struct RealSource : ff_monode_t<std::string>{
-    int ntask;
-    RealSource(int ntask) : ntask(ntask) {}
+static inline float active_delay(int msecs) {
+  // read current time
+  float x = 1.25f;
+  auto start = std::chrono::high_resolution_clock::now();
+  auto end   = false;
+  while(!end) {
+    auto elapsed = std::chrono::high_resolution_clock::now() - start;
+    auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+    x *= sin(x) / atan(x) * tanh(x) * sqrt(x);
+    if(msec>=msecs)
+      end = true;
+  }
+  return x;
+}
 
-    std::string* svc(std::string*){
-        for(int i = 0; i < ntask; i++)
-            ff_send_out(new std::string("Trigger string!"));
-        return EOS;
+
+// this assert will not be removed by -DNDEBUG
+#define myassert(c) {													\
+		if (!(c)) {														\
+			std::cerr << "ERROR: myassert at line " << __LINE__ << " failed\n"; \
+			abort();													\
+		}																\
+	}
+
+struct ExcType {
+	ExcType():contiguous(false) {}
+	ExcType(bool): contiguous(true) {}
+	~ExcType() {
+		if (!contiguous)
+			delete [] C;
+	}
+	
+	size_t clen = 0;
+	char*  C    = nullptr;
+	bool contiguous;
+	
+#if !defined(MANUAL_SERIALIZATION)
+	template<class Archive>
+	void serialize(Archive & archive) {
+	  archive(clen);
+	  if (!C) {
+		  myassert(!contiguous);
+		  C = new char[clen];
+	  }
+	  archive(cereal::binary_data(C, clen));
+	}
+#endif
+};
+
+static ExcType* allocateExcType(size_t size, bool setdata=false) {
+	char* _p = (char*)calloc(size+sizeof(ExcType), 1);	// to make valgrind happy !
+	ExcType* p = new (_p) ExcType(true);  // contiguous allocation
+	
+	p->clen    = size;
+	p->C       = (char*)p+sizeof(ExcType);
+	if (setdata) {
+		p->C[0]       = 'c';
+		if (size>10) 
+			p->C[10]  = 'i';
+		if (size>100)
+			p->C[100] = 'a';
+		if (size>500)
+			p->C[500] = 'o';		
+	}
+	p->C[p->clen-1] = 'F';
+	return p;
+}
+
+struct Src : ff_monode_t<ExcType>{
+    int ntask;
+    Src(int ntask) : ntask(ntask){}
+
+    ExcType* svc(ExcType*){
+        for(int i = 0; i < ntask; i++) {
+            ff_send_out(allocateExcType(10, false));
+        }
+        return this->EOS;
     }
 };
 
@@ -60,7 +129,6 @@ struct Sink : ff_minode_t<std::string>{
     Sink(int id): sinkID(id) {}
     std::string* svc(std::string* in){
         std::string* output = new std::string(*in + " received by Sink " + std::to_string(sinkID) + " from " +  std::to_string(get_channel_id()));
-        std::cout << "[SINK] " << *output << std::endl;
         delete in;
         return output;
     }
@@ -125,14 +193,11 @@ int main(int argc, char*argv[]){
 
 
     /* --- RPC ENDPOINTS --- */
-    ff_endpoint_rpc G0toG1_rpc("127.0.0.1", port+3, protocol);
-    ff_endpoint_rpc G2toG1_rpc("127.0.0.1", port+4, protocol);
+    ff_endpoint_rpc toG1_rpc("127.0.0.1", port+3, protocol);
 
-    ff_endpoint_rpc G0toG2_rpc("127.0.0.1", port+5, protocol);
-    ff_endpoint_rpc G1toG2_rpc("127.0.0.1", port+6, protocol);
+    ff_endpoint_rpc toG2_rpc("127.0.0.1", port+5, protocol);
 
-    ff_endpoint_rpc G1toG3_rpc("127.0.0.1", port+7, protocol);
-    ff_endpoint_rpc G2toG3_rpc("127.0.0.1", port+8, protocol);
+    ff_endpoint_rpc toG3_rpc("127.0.0.1", port+7, protocol);
     /* --- RPC ENDPOINTS --- */
 
     ff_farm gFarm;
@@ -144,14 +209,13 @@ int main(int argc, char*argv[]){
     if (myrank == 0){
         rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector<int>({0});
         rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector<int>({1});
+
         SenderManager* sendMaster = new SenderManager({{{g1.groupName, g2.groupName},
-            new TransportRPCS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, {&G0toG1_rpc, &G0toG2_rpc}, "G0")
+            new SenderPluginRPC({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, {&toG1_rpc, &toG2_rpc}, "G0")
         }}, &rt);
-        
-        gFarm.add_collector(new ff_dAsender(sendMaster));
+        gFarm.add_collector(new ff_dMPsender(sendMaster));
 
-        gFarm.add_workers({new WrapperOUT(new RealSource(ntask), 0, 1, 0, true)});
-
+        gFarm.add_workers({new WrapperOUT(new Src(ntask), 0, 1, 0, true)});
         gFarm.run_and_wait_end();
         ABT_finalize();
         return 0;
@@ -160,11 +224,11 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector<int>({1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
-        ReceiverManager *recMaster = new ReceiverManager({new TransportRPC(g1, 2, {&G0toG1_rpc, &G2toG1_rpc}, true)}, {{0, 0}});
-        SenderManager* sendMaster = new SenderManager({{{g2.groupName, g3.groupName}, new TransportRPCS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, {&G1toG2_rpc, &G1toG3_rpc}, "G1", true)}}, &rt);
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginRPC(g1, 2, {&toG1_rpc}, true)}, {{0, 0}});
+        SenderManager* sendMaster = new SenderManager({{{g2.groupName, g3.groupName}, new SenderPluginRPC({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, {&toG2_rpc, &toG3_rpc}, "G1", true)}}, &rt);
          
-        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
-        gFarm.add_collector(new ff_dAsenderH(sendMaster));
+        gFarm.add_emitter(new ff_dMPreceiverH(recMaster, 2));
+        gFarm.add_collector(new ff_dMPsenderH(sendMaster));
 
 		auto s = new Source(2,0);
         auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 2, 0, {{0,0}}, true), true, true);
@@ -178,11 +242,11 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector<int>({0});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
-        ReceiverManager *recMaster = new ReceiverManager({new TransportRPC(g2, 2, {&G0toG2_rpc, &G1toG2_rpc}, true)}, {{1, 0}});
-        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g3.groupName}, new TransportRPCS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, {&G2toG1_rpc, &G2toG3_rpc}, "G2", true)}}, &rt);
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginRPC(g2, 2, {&toG2_rpc}, true)}, {{1, 0}});
+        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g3.groupName}, new SenderPluginRPC({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, {&toG1_rpc, &toG3_rpc}, "G2", true)}}, &rt);
         
-        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
-        gFarm.add_collector(new ff_dAsenderH(sendMaster));
+        gFarm.add_emitter(new ff_dMPreceiverH(recMaster, 2));
+        gFarm.add_collector(new ff_dMPsenderH(sendMaster));
 
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
@@ -203,9 +267,9 @@ int main(int argc, char*argv[]){
         
     } else {
         printf("Listening on port: %d\n", g3.port);
-        ReceiverManager *recMaster = new ReceiverManager({new TransportRPC(g3, 2, {&G1toG3_rpc, &G2toG3_rpc})});
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginRPC(g3, 2, {&toG3_rpc})});
 
-        gFarm.add_emitter(new ff_dAreceiver(recMaster, 2));
+        gFarm.add_emitter(new ff_dMPreceiver(recMaster, 2));
         gFarm.add_workers({new WrapperIN(new StringPrinter(), 1, true)});
 
         gFarm.run_and_wait_end();

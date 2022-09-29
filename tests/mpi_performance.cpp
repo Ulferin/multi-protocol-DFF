@@ -1,14 +1,17 @@
 /*
- *           
- *           |-> Forwarder1 ->|    |-> Sink1 ->|  
- *  Source ->|                | -> |           | -> StringPrinter
- *           |-> Forwarder2 ->|    |-> Sink2 ->|
+  *                                 |-> Sink1 ->|  
+ *                                 |           | 
+ *           |-> Forwarder1 ->|    |-> Sink2 ->|
+ *  Source ->|                | -> |           |-> StringPrinter
+ *           |-> Forwarder2 ->|    |-> Sink3 ->|
+ *                                 |           |
+ *                                 |-> Sink4 ->|
  *          
  *
  * 
  *  G0: Source
- *  G1: Forwarer1, Sink1
- *  G2: Forwarder2, Sink2
+ *  G1: Forwarer1, Sink1, Sink2
+ *  G2: Forwarder2, Sink2, Sink3
  *  G3: StringPrinter
  *
  */
@@ -20,11 +23,14 @@
 
 #include <ff/dff.hpp>
 #include <ff/distributed/ff_dadapters.hpp>
+#include <ff/distributed/ff_dsenderMPI.hpp>
+#include <ff/distributed/ff_dreceiverMPI.hpp>
 
 #include <ff_dTransportType.hpp>
-#include <ff_dAreceiverComp.hpp>
-#include <ff_dAsenderComp.hpp>
+#include <ff_dMPreceiver.hpp>
+#include <ff_dMPsender.hpp>
 #include <ff_dManager.hpp>
+#include <mpi.h>
 
 using namespace ff;
 std::mutex mtx;
@@ -149,7 +155,7 @@ struct RNode : ff_minode_t<ExcType>{
     ExcType* svc(ExcType* in){
         processedItems++;
         if (execTime) active_delay(this->execTime);
-        printf("Waiting: %d\n", processedItems);
+        //printf("Waiting: %d\n", processedItems);
         // std::cout << "SERIALIZABLE? " << isSerializable() << "\n";
         if (in->C[in->clen-1] != 'F') {
             ff::cout << "ERROR: " << in->C[in->clen-1] << " != 'F'\n";
@@ -235,81 +241,131 @@ int main(int argc, char*argv[]){
 	if ((p=getenv("CHECK_DATA"))!=nullptr) check=true;
 	printf("checkdata = %d\n", check);
 
-    ff_endpoint g1("127.0.0.1", 49001);
+    int provided;
+    if (MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided) != MPI_SUCCESS)
+        return -1;  
+      
+    // no thread support 
+    if (provided < MPI_THREAD_MULTIPLE){
+        error("No thread support by MPI\n");
+        return -1;
+    }
+
+    int myrank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+
+    ff_endpoint g1(1);
     g1.groupName = "G1";
 
-    ff_endpoint g1_2("127.0.0.1", 49004);
-    g1_2.groupName = "G1";
-
-    ff_endpoint g2("127.0.0.1", 49002);
+    ff_endpoint g2(2);
     g2.groupName = "G2";
 
-    ff_endpoint g2_2("127.0.0.1", 49005);
-    g2_2.groupName = "G2";
-
-    ff_endpoint g3("127.0.0.1", 49003);
+    ff_endpoint g3(3);
     g3.groupName = "G3";
+
+    ff_endpoint g1_tcp("172.16.34.2", 49001);
+    g1_tcp.groupName = "G1";
+
+    ff_endpoint g2_tcp("172.16.34.3", 49002);
+    g2_tcp.groupName = "G2";
+
+    ff_endpoint g3_tcp("172.16.34.4", 49003);
+    g3_tcp.groupName = "G3";
 
     ff_farm gFarm;
     ff_a2a a2a;
     std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt;
-    if (atoi(argv[1]) == 0){
+    if (myrank == 0){
         rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector<int>({0});
         rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector<int>({1});
 
-        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g2.groupName}, new TransportTCPS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, "G0")}}, &rt);
+        #if defined(MPIMIX)
+	    SenderManager* sendMaster = new SenderManager({{{g1_tcp.groupName, g2_tcp.groupName}, new SenderPluginTCP({{ChannelType::FWD, g1_tcp},{ChannelType::FWD, g2_tcp}}, "G0")}}, &rt);
+        gFarm.add_collector(new ff_dMPsender(sendMaster));
+	    #elif defined(MPIMP)
+        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g2.groupName}, new SenderPluginMPI({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, "G0")}}, &rt);
+        gFarm.add_collector(new ff_dMPsender(sendMaster));
+        #elif defined(MPISP)
+        gFarm.add_collector(new ff_dsenderMPI({{ChannelType::FWD, g1}, {ChannelType::FWD, g2}}, &rt,"G0"));
+        #endif
 
-        gFarm.add_collector(new ff_dAsender(sendMaster));
         gFarm.add_workers({new WrapperOUT(new Src(items), 0, 1, 0, true)});
-
+        gFarm.cleanup_collector();
         gFarm.run_and_wait_end();
+        if (MPI_Finalize() != MPI_SUCCESS) abort();
         return 0;
-    } else if (atoi(argv[1]) == 1){
-        rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector<int>({1});
+    } else if (myrank == 1){
+        rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector<int>({2,3});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
-        // ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g1, 1),new TransportTCP(g1_2, 1)}, {{0, 0}});
-        // SenderManager* sendMaster = new SenderManager({{{g3.groupName}, new TransportTCPS({{ChannelType::FWD, g3}}, "G1")}, {{g2_2.groupName}, new TransportTCPS({{ChannelType::INT, g2_2}}, "G1")}}, &rt);
+        #if defined(MPIMIX)
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginMPI(1),new ReceiverPluginTCP(g1_tcp, 1)}, {{0, 0}});
+        SenderManager* sendMaster = new SenderManager({{{g3.groupName}, new SenderPluginTCP({{ChannelType::FWD, g3_tcp}}, "G1")}, {{g2.groupName}, new SenderPluginMPI({{ChannelType::INT, g2}}, "G1")}}, &rt);
+        gFarm.add_emitter(new ff_dMPreceiverH(recMaster, 2));
+        gFarm.add_collector(new ff_dMPsenderH(sendMaster));
+        #elif defined(MPIMP)
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginMPI(2)}, {{0, 0}});
+        SenderManager* sendMaster = new SenderManager({{{g2.groupName, g3.groupName}, new SenderPluginMPI({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, "G1")}}, &rt);
+        gFarm.add_emitter(new ff_dMPreceiverH(recMaster, 2));
+        gFarm.add_collector(new ff_dMPsenderH(sendMaster));
+        #elif defined(MPISP)
+        gFarm.add_emitter(new ff_dreceiverHMPI(2, {{0, 0}}));
+        gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, &rt, "G1"));
+        #endif
 
-        ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g1, 2)}, {{0, 0}});
-        SenderManager* sendMaster = new SenderManager({{{g2.groupName, g3.groupName}, new TransportTCPS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, "G1")}}, &rt);
 
-        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
-        gFarm.add_collector(new ff_dAsenderH(sendMaster));
         gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 		
-        auto s = new LNode(0, 2, execTimeSource, bytexItem, check);
-        auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 2, 0, {{0,0}}, true), true, true);
+        auto s = new LNode(0, 4, execTimeSource, bytexItem, check);
+        auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 4, 0, {{0,0}, {1,1}}, true), true, true);
 
-        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(0,0)})});
-        auto sink = new RNode(0, execTimeSink);
-        a2a.add_secondset<ff_node>({new ff_comb(new CollectorAdapter(sink, {0}, true), new WrapperOUT(new ForwarderNode(sink->serializeF, sink->freetaskF), 0, 1, 0, true)), new SquareBoxRight});
 
-    } else if (atoi(argv[1]) == 2) {
-        rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector<int>({0});
+        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({{0,0}, {1,1}})});
+        auto sink0 = new RNode(0, execTimeSink);
+        auto sink1 = new RNode(1, execTimeSink);
+        a2a.add_secondset<ff_node>({new ff_comb(new CollectorAdapter(sink0, {0}, true),
+                                                new WrapperOUT(new ForwarderNode(sink0->serializeF, sink0->freetaskF), 0, 1, 0, true)),
+                                    new ff_comb(new CollectorAdapter(sink1, {0}, true),
+                                                new WrapperOUT(new ForwarderNode(sink1->serializeF, sink1->freetaskF), 1, 1, 0, true)),
+                                    new SquareBoxRight});
+
+    } else if (myrank == 2) {
+        rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector<int>({0,1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
-        // ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g2, 1),new TransportTCP(g2_2, 1)}, {{1, 0}});
-        // SenderManager* sendMaster = new SenderManager({{{g3.groupName}, new TransportTCPS({{ChannelType::FWD, g3}}, "G2")}, {{g1.groupName}, new TransportTCPS({{ChannelType::INT, g1_2}}, "G2")}}, &rt);
+	    #if defined(MPIMIX)
+	    ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginMPI(1),new ReceiverPluginTCP(g2_tcp, 1)}, {{1, 0}});
+        SenderManager* sendMaster = new SenderManager({{{g3.groupName}, new SenderPluginTCP({{ChannelType::FWD, g3_tcp}}, "G2")}, {{g1.groupName}, new SenderPluginMPI({{ChannelType::INT, g1}}, "G2")}}, &rt);
+        gFarm.add_emitter(new ff_dMPreceiverH(recMaster, 2));
+        gFarm.add_collector(new ff_dMPsenderH(sendMaster));
+        #elif defined(MPIMP)
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginMPI(2)}, {{1, 0}});
+        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g3.groupName}, new SenderPluginMPI({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, "G2")}}, &rt);
+        gFarm.add_emitter(new ff_dMPreceiverH(recMaster, 2));
+        gFarm.add_collector(new ff_dMPsenderH(sendMaster));
+        #elif defined(MPISP)
+        gFarm.add_emitter(new ff_dreceiverHMPI(2, {{1, 0}}));
+        gFarm.add_collector(new ff_dsenderHMPI({{ChannelType::INT, g1}, {ChannelType::FWD, g3}}, &rt, "G2"));
+        #endif
 
-        ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g2, 2)}, {{1, 0}});
-        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g3.groupName}, new TransportTCPS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, "G2")}}, &rt);
-
-        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
-        gFarm.add_collector(new ff_dAsenderH(sendMaster));
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 
-		auto s = new LNode(1, 2, execTimeSource, bytexItem, check);
-		auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 2, 1, {{1,0}}, true), true, true);
+		auto s = new LNode(1, 4, execTimeSource, bytexItem, check);
+		auto ea = new ff_comb(new WrapperIN(new ForwarderNode(s->deserializeF, s->alloctaskF)), new EmitterAdapter(s, 4, 1, {{2,0}, {3,1}}, true), true, true);
 
-        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({std::make_pair(1,0)})}, 0, true);
+        a2a.add_firstset<ff_node>({ea, new SquareBoxLeft({{2,0}, {3,1}})}, 0, true);
 
-        auto sink = new RNode(1, execTimeSink);
-		a2a.add_secondset<ff_node>({
-									new ff_comb(new CollectorAdapter(sink, {1}, true),
-												new WrapperOUT(new ForwarderNode(sink->serializeF, sink->freetaskF), 1, 1, 0, true), true, true),
+        auto sink2 = new RNode(2, execTimeSink);
+        auto sink3 = new RNode(3, execTimeSink);
+
+        a2a.add_secondset<ff_node>({
+									new ff_comb(new CollectorAdapter(sink2, {1}, true),
+												new WrapperOUT(new ForwarderNode(sink2->serializeF, sink2->freetaskF), 2, 1, 0, true), true, true),
+                                    new ff_comb(new CollectorAdapter(sink3, {1}, true),
+												new WrapperOUT(new ForwarderNode(sink3->serializeF, sink3->freetaskF), 3, 1, 0, true), true, true),
 									new SquareBoxRight
 			                        }, true);
 
@@ -323,25 +379,41 @@ int main(int argc, char*argv[]){
         int total_task = items * 2;
         int expected_completion = std::max(items * execTimeSource/2, items * execTimeSink);
         
-        printf("Configuration || ntask: %d - LNode wait (ms per task): %d - RNode wait (ms per task): %d\n", items, execTimeSource, execTimeSink);
+        printf("Configuration || ntask: %d - LNode wait (ms per task): %d - RNode wait (ms per task): %d - byteXitem: %ld\n", items, execTimeSource, execTimeSink, bytexItem);
         printf("Total number of task to the Sink node: %d\n", total_task);
         printf("Expected completion time (in ms): %d\n", expected_completion);
 
         ffTime(START_TIME);
 
+        std::string *tt;
+        #if defined(MPIMIX)
+        tt = new std::string("MPIMIX");  
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginTCP(g3_tcp, 2)});
+	    gFarm.add_emitter(new ff_dMPreceiver(recMaster, 2));
+        #elif defined(MPIMP)
+	    tt = new std::string("MPIMP");
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginMPI(2)});
+        gFarm.add_emitter(new ff_dMPreceiver(recMaster, 2));
+        #elif defined(MPISP)
+	    tt = new std::string("MPISP");
+        gFarm.add_emitter(new ff_dreceiverMPI(2));
+        #endif
 
-        ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g3, 2)});
-        gFarm.add_emitter(new ff_dAreceiver(recMaster, 2));
+        gFarm.cleanup_emitter();
         Snk *snk = new Snk(total_task, check);
+
         gFarm.add_workers({new WrapperIN(snk, 1, true)});
 
         gFarm.run_and_wait_end();
 
         ffTime(STOP_TIME);
-        std::cout << "Time: " << ffTime(GET_TIME) << "\n";
-        std::cout << "Total tasks to the Sink: " << snk->processedItems << "\n"; 
+        std::cout << "Time " << *tt << ": " << ffTime(GET_TIME) << "\n";
+        std::cout << "Total tasks to the Sink: " << snk->processedItems << "\n\n";
+        if (MPI_Finalize() != MPI_SUCCESS) abort();
         return 0;
     }
     gFarm.add_workers({&a2a});
     gFarm.run_and_wait_end();
+    if (MPI_Finalize() != MPI_SUCCESS) abort();
+    return 0;
 }

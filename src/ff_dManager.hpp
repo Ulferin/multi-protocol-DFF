@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <map>
-#include <ff_dAreceiverComp.hpp>
+#include <ff_dMPreceiver.hpp>
 #include <ff_dTransportTypeI.hpp>
 #include <ff_dManagerI.hpp>
 
@@ -14,12 +14,12 @@
 class ReceiverManager: public ReceiverManagerI {
 
 protected:
-    std::vector<TransportType*>      components;
+    std::vector<ReceiverPlugin*>      components;
     std::map<int, int>          routingTable;
     bool                        end = false;
 
 public:
-    ReceiverManager(std::vector<TransportType*> components,
+    ReceiverManager(std::vector<ReceiverPlugin*> components,
         std::map<int, int> routingTable = {std::make_pair(0,0)})
           :components(std::move(components)), routingTable(routingTable){}
 
@@ -32,7 +32,7 @@ public:
 
 
     int wait_components() {
-        std::vector<std::pair<bool, TransportType*>> listeningComponents;
+        std::vector<std::pair<bool, ReceiverPlugin*>> listeningComponents;
         for (auto &&component : components)
             listeningComponents.push_back(std::make_pair(false, component));
         
@@ -83,16 +83,16 @@ public:
 class SenderManager : public SenderManagerI {
 
 protected:
-    std::vector<std::pair<std::set<std::string>, TransportTypeS*>> components;
+    std::vector<std::pair<std::set<std::string>, SenderPlugin*>> components;
     precomputedRT_t* rt;
-    std::map<std::pair<int, ff::ChannelType>, TransportTypeS*>        componentsMap;
+    std::map<std::pair<int, ff::ChannelType>, SenderPlugin*>        componentsMap;
     int next_component = 0;
     int received = 0;
-    std::map<std::pair<int, ff::ChannelType>, TransportTypeS*>::iterator it;
-    std::vector<std::pair<precomputedRT_t*, TransportTypeS*>> routedComponents;
+    std::map<std::pair<int, ff::ChannelType>, SenderPlugin*>::iterator it;
+    std::vector<std::pair<precomputedRT_t*, SenderPlugin*>> routedComponents;
 
-    TransportTypeS* getNextComponent(bool external) {
-        TransportTypeS* component;
+    SenderPlugin* getNextComponent(bool external) {
+        SenderPlugin* component;
         // if(it == componentsMap.end()) it = componentsMap.begin();
         it = componentsMap.begin();
         while(it != componentsMap.end()) {
@@ -105,7 +105,7 @@ protected:
 
 public:
     SenderManager(
-        std::vector<std::pair<std::set<std::string>, TransportTypeS*>> components,
+        std::vector<std::pair<std::set<std::string>, SenderPlugin*>> components,
         precomputedRT_t* rt)
         : components(std::move(components)), rt(rt) {}
 
@@ -138,7 +138,7 @@ public:
 
     int send(message_t* task, bool external) {
         received++;
-        TransportTypeS* component;
+        SenderPlugin* component;
         ff::ChannelType cht = external ? (task->feedback ? ChannelType::FBK : ChannelType::FWD) : ff::ChannelType::INT;
         if(task->chid == -1) {
             component = getNextComponent(external);

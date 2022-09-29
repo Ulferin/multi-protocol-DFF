@@ -5,11 +5,6 @@
 
 #include <ff/distributed/ff_network.hpp>
 
-//TODO: ff_endpoint_rpc in current state in only able to deal with
-//      plugin+protocol pairs that accept a "port" field. This is not the
-//      case, for example, for na+sm, which has problems in managing the
-//      "protocol" field.
-
 // Endpoint extension for RPC compatibility. It acts like an endpoint for the
 // distributed version and only adds the possibility to specify the plugin and
 // protocol to be used 

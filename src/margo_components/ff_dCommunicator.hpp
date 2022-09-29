@@ -8,11 +8,11 @@
 #include <margo.h>
 
 #include "../ff_dTransportTypeI.hpp"
-#include "../ff_dAreceiverComp.hpp"
+#include "../ff_dMPreceiver.hpp"
 #include "ff_drpc_types.h"
 #include "ff_margo_utils.hpp"
 
-class TransportRPC: public TransportType {
+class ReceiverPluginRPC: public ReceiverPlugin {
 
 protected:
     void init_ABT() {
@@ -26,6 +26,8 @@ protected:
     void init_mid(const char* address, margo_instance_id* mid) {
         na_init_info na_info = NA_INIT_INFO_INITIALIZER;
         na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
+        na_info.max_unexpected_size = 10000;
+        na_info.max_expected_size = 10000;
 
         hg_init_info info = {
             .na_init_info = na_info
@@ -178,9 +180,9 @@ protected:
     }
 
 public:
-    TransportRPC(ff_endpoint handshakeAddr, size_t input_channels,
+    ReceiverPluginRPC(ff_endpoint handshakeAddr, size_t input_channels,
         std::vector<ff_endpoint_rpc*> endRPC, bool internal=false, bool busy=true):
-        TransportType(input_channels), handshakeAddr(handshakeAddr),
+        ReceiverPlugin(input_channels), handshakeAddr(handshakeAddr),
         endRPC(std::move(endRPC)), internal(internal), busy(busy) {
             this->boot_component();
         }
@@ -238,7 +240,7 @@ protected:
 };
 
 
-class TransportRPCS: public TransportTypeS {
+class SenderPluginRPC: public SenderPlugin {
 
 protected:
     virtual int handshakeHandler(const int sck, ChannelType ct){
@@ -343,6 +345,8 @@ protected:
     void init_mid(const char* address, margo_instance_id* mid) {
         na_init_info na_info = NA_INIT_INFO_INITIALIZER;
         na_info.progress_mode = busy ? NA_NO_BLOCK : 0;
+        na_info.max_unexpected_size = 10000;
+        na_info.max_expected_size = 10000;
 
         hg_init_info info = {
             .na_init_info = na_info
@@ -424,18 +428,18 @@ protected:
 
 public:
 
-    TransportRPCS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+    SenderPluginRPC(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::vector<ff_endpoint_rpc*> endRPC,
         std::string gName = "", bool internal=false, bool busy = true):
-            TransportTypeS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
+            SenderPlugin(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
             endRPC(std::move(endRPC)), internal(internal) {
                 this->boot_component();
             }
 
-    TransportRPCS(std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints,
+    SenderPluginRPC(std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints,
         std::vector<ff_endpoint_rpc*> endRPC,
         std::string gName = "", bool internal=false, bool busy = true):
-            TransportTypeS(destEndpoints, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
+            SenderPlugin(destEndpoints, gName, batchSize, messageOTF, internalMessageOTF), busy(busy),
             endRPC(std::move(endRPC)), internal(internal) {
                 this->boot_component();
             }
@@ -594,8 +598,8 @@ void ff_rpc(hg_handle_t handle) {
     hret = margo_get_input(handle, &in);
     assert(hret == HG_SUCCESS);
 
-    ff_dAreceiver* receiver =
-        (ff_dAreceiver*)margo_registered_data(mid, info->id);
+    ff_dMPreceiver* receiver =
+        (ff_dMPreceiver*)margo_registered_data(mid, info->id);
 
     receiver->received++;
     if(in.task->chid == -2)
@@ -624,8 +628,8 @@ void ff_rpc_shutdown(hg_handle_t handle) {
     hret = margo_get_input(handle, &in);
     assert(hret == HG_SUCCESS);
 
-    ff_dAreceiver* receiver =
-        (ff_dAreceiver*)margo_registered_data(mid, info->id);
+    ff_dMPreceiver* receiver =
+        (ff_dMPreceiver*)margo_registered_data(mid, info->id);
     
     receiver->registerEOS(!(in.external));
     margo_destroy(handle);

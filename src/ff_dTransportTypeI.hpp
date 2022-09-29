@@ -13,20 +13,19 @@ the barely necessary functions to receive and ship data in the network. */
 using namespace ff;
 using precomputedRT_t = std::map<std::pair<std::string, ChannelType>, std::vector<int>>;
 
-class TransportType {
+class ReceiverPlugin {
 protected:
 
 public:
     virtual void init(ff_monode_t<message_t>*) = 0;
     virtual int comm_listen() = 0;
     virtual void finalize() = 0;
-
     virtual size_t getInternalConnections(){
         return this->internalConnections;
     }
 
 protected:
-    TransportType(size_t input_channels)
+    ReceiverPlugin(size_t input_channels)
             : input_channels(input_channels) {}
 
     size_t                  input_channels;
@@ -35,29 +34,24 @@ protected:
     std::set<std::string>   internalGroupsNames;
     size_t                  internalConnections = 0;
     std::map<int, bool>     isInternalConnection;
-
-    
     size_t                  handshakes = 0;
 };
 
 
-class TransportTypeS {
+class SenderPlugin {
 protected:
 
 public:
     virtual int send(message_t* task, bool external) = 0;
     virtual void finalize() = 0;
-
     virtual int handshake(precomputedRT_t* rt) = 0;
-
     virtual void notify(ssize_t id, bool external) = 0;
-
     bool haveConnType(bool external) {
         return external ? haveExternal : haveInternal;
     }
 
 protected:
-    TransportTypeS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+    SenderPlugin(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
@@ -66,7 +60,7 @@ protected:
         this->destEndpoints.push_back(std::move(destEndpoint));
     }
 
-    TransportTypeS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
+    SenderPlugin( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
@@ -80,11 +74,9 @@ protected:
     int                                                 batchSize;
     int                                                 messageOTF;
     int                                                 internalMessageOTF;
-    std::set<std::string>                               internalGroups;
     fd_set                                              set, tmpset;
     int                                                 fdmax = -1;
     std::vector<int>                                    socks; 
-
     bool                                                haveExternal=false, haveInternal=false;
 };
 

@@ -20,8 +20,8 @@
 #include <map>
 
 #include <ff_dTransportType.hpp>
-#include <ff_dAreceiverComp.hpp>
-#include <ff_dAsenderComp.hpp>
+#include <ff_dMPreceiver.hpp>
+#include <ff_dMPsender.hpp>
 #include <ff_dManager.hpp>
 
 using namespace ff;
@@ -66,7 +66,6 @@ struct Sink : ff_minode_t<std::string>{
 struct StringPrinter : ff_node_t<std::string>{
     std::string* svc(std::string* in){
         const std::lock_guard<std::mutex> lock(mtx);
-        // std::cout << "Received something! Addr:" << in << "\n";
 #if 1
         try {
             std::cout << *in << std::endl;
@@ -104,19 +103,13 @@ int main(int argc, char*argv[]){
 
     int ntask = atoi(argv[2]);
 
-    ff_endpoint g1("127.0.0.1", 49001);
+    ff_endpoint g1("127.0.0.1", 13000);
     g1.groupName = "G1";
 
-    ff_endpoint g1_2("127.0.0.1", 49004);
-    g1_2.groupName = "G1";
-
-    ff_endpoint g2("127.0.0.1", 49002);
+    ff_endpoint g2("127.0.0.1", 13001);
     g2.groupName = "G2";
 
-    ff_endpoint g2_2("127.0.0.1", 49005);
-    g2_2.groupName = "G2";
-
-    ff_endpoint g3("127.0.0.1", 49003);
+    ff_endpoint g3("38.242.220.197", 65000);
     g3.groupName = "G3";
 
     ff_farm gFarm;
@@ -126,9 +119,9 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector<int>({0});
         rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector<int>({1});
 
-        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g2.groupName}, new TransportTCPS({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, "G0")}}, &rt);
+        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g2.groupName}, new SenderPluginTCP({{ChannelType::FWD, g1},{ChannelType::FWD, g2}}, "G0")}}, &rt);
+        gFarm.add_collector(new ff_dMPsender(sendMaster));
 
-        gFarm.add_collector(new ff_dAsender(sendMaster));
         gFarm.add_workers({new WrapperOUT(new RealSource(ntask), 0, 1, 0, true)});
 
         gFarm.run_and_wait_end();
@@ -137,14 +130,12 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector<int>({1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
-        // ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g1, 1),new TransportTCP(g1_2, 1)}, {{0, 0}});
-        // SenderManager* sendMaster = new SenderManager({{{g3.groupName}, new TransportTCPS({{ChannelType::FWD, g3}}, "G1")}, {{g2_2.groupName}, new TransportTCPS({{ChannelType::INT, g2_2}}, "G1")}}, &rt);
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginTCP(g1, 2)}, {{0, 0}});
+        SenderManager* sendMaster = new SenderManager({{{g2.groupName, g3.groupName}, new SenderPluginTCP({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, "G1")}}, &rt);
 
-        ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g1, 2)}, {{0, 0}});
-        SenderManager* sendMaster = new SenderManager({{{g2.groupName, g3.groupName}, new TransportTCPS({{ChannelType::INT, g2},{ChannelType::FWD, g3}}, "G1")}}, &rt);
+        gFarm.add_emitter(new ff_dMPreceiverH(recMaster, 2));
+        gFarm.add_collector(new ff_dMPsenderH(sendMaster));
 
-        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
-        gFarm.add_collector(new ff_dAsenderH(sendMaster));
         gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 		
@@ -159,14 +150,12 @@ int main(int argc, char*argv[]){
         rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector<int>({0});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
-        // ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g2, 1),new TransportTCP(g2_2, 1)}, {{1, 0}});
-        // SenderManager* sendMaster = new SenderManager({{{g3.groupName}, new TransportTCPS({{ChannelType::FWD, g3}}, "G2")}, {{g1.groupName}, new TransportTCPS({{ChannelType::INT, g1_2}}, "G2")}}, &rt);
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginTCP(g2, 2)}, {{1, 0}});
+        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g3.groupName}, new SenderPluginTCP({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, "G2")}}, &rt);
 
-        ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g2, 2)}, {{1, 0}});
-        SenderManager* sendMaster = new SenderManager({{{g1.groupName, g3.groupName}, new TransportTCPS({{ChannelType::INT, g1},{ChannelType::FWD, g3}}, "G2")}}, &rt);
+        gFarm.add_emitter(new ff_dMPreceiverH(recMaster, 2));
+        gFarm.add_collector(new ff_dMPsenderH(sendMaster));
 
-        gFarm.add_emitter(new ff_dAreceiverH(recMaster, 2));
-        gFarm.add_collector(new ff_dAsenderH(sendMaster));
 		gFarm.cleanup_emitter();
 		gFarm.cleanup_collector();
 
@@ -185,8 +174,9 @@ int main(int argc, char*argv[]){
 		
         
     } else {
-        ReceiverManager *recMaster = new ReceiverManager({new TransportTCP(g3, 2)});
-        gFarm.add_emitter(new ff_dAreceiver(recMaster, 2));
+        ReceiverManager *recMaster = new ReceiverManager({new ReceiverPluginTCP(g3, 2)});
+        gFarm.add_emitter(new ff_dMPreceiver(recMaster, 2));
+        
         gFarm.add_workers({new WrapperIN(new StringPrinter(), 1, true)});
 
         gFarm.run_and_wait_end();

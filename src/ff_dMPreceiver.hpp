@@ -1,5 +1,5 @@
-#ifndef FF_DARECEIVER_COMP
-#define FF_DARECEIVER_COMP
+#ifndef FF_DMPRECEIVER_COMP
+#define FF_DMPRECEIVER_COMP
 
 #include <iostream>
 #include <vector>
@@ -20,12 +20,12 @@
 
 using namespace ff;
 
-class ff_dAreceiver: public ff_monode_t<message_t> {
+class ff_dMPreceiver: public ff_monode_t<message_t> {
 
 
 public:
 
-    ff_dAreceiver(ReceiverManagerI* communicator, size_t input_channels,
+    ff_dMPreceiver(ReceiverManagerI* communicator, size_t input_channels,
         int coreid = -1, int busy = 0, int expected=-1):
             communicator(communicator), input_channels(input_channels),
             coreid(coreid), busy(busy), expected(expected) {}
@@ -82,15 +82,15 @@ public:
     int expected = -1;
 };
 
-class ff_dAreceiverH : public ff_dAreceiver {
+class ff_dMPreceiverH : public ff_dMPreceiver {
 protected:
     size_t internalNEos = 0, externalNEos = 0;
     int next_rr_destination = 0;
 
 public:
-    ff_dAreceiverH(ReceiverManagerI* communicator, size_t input_channels,
+    ff_dMPreceiverH(ReceiverManagerI* communicator, size_t input_channels,
         int coreid = -1, int busy = 0, int expected=-1)
-		: ff_dAreceiver(communicator, input_channels, coreid, busy, expected)  {}
+		: ff_dMPreceiver(communicator, input_channels, coreid, busy, expected)  {}
 
     virtual void registerLogicalEOS(int sender){
         for(size_t i = 0; i < this->get_num_outchannels()-1; i++)
@@ -109,7 +109,7 @@ public:
             }
         }
 
-        ff_dAreceiver::registerEOS(isInternal);
+        ff_dMPreceiver::registerEOS(isInternal);
     }
 
     virtual void forward(message_t* task, bool isInternal){

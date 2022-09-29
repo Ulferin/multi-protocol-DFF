@@ -7,25 +7,25 @@
 #include <ff/distributed/ff_batchbuffer.hpp>
 #include <mpi.h>
 #include "ff_dTransportTypeI.hpp"
-#include "ff_dAreceiverComp.hpp"
+#include "ff_dMPreceiver.hpp"
 
 using namespace ff;
 
 #ifndef DFF_EXCLUDE_MPI
-class TransportMPI: public TransportType {
+class ReceiverPluginMPI: public ReceiverPlugin {
 protected:
-    ff_dAreceiver* receiver;        // FIXME: this should become a callback instead of whole object
+    ff_dMPreceiver* receiver;        // FIXME: this should become a callback instead of whole object
     std::set<int> internalRanks;
     std::map<int, ChannelType> rank2ChannelType;
     bool finalized = false;
     size_t neos = 0;
 
 public:
-    TransportMPI(size_t input_channels)
-		: TransportType(input_channels) {}
+    ReceiverPluginMPI(size_t input_channels)
+		: ReceiverPlugin(input_channels) {}
 
     virtual void init(ff_monode_t<message_t>* data) {
-        receiver = (ff_dAreceiver*)data;
+        receiver = (ff_dMPreceiver*)data;
 
         printf("Starting handshake with MPI\n");
         for(size_t i = 0; i < input_channels; i++)
@@ -138,7 +138,7 @@ protected:
     
 };
 
-class TransportMPIS: public TransportTypeS {
+class SenderPluginMPI: public SenderPlugin {
 
 protected:
     class batchBuffer {
@@ -273,17 +273,17 @@ protected:
     }
 
 public:
-    TransportMPIS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+    SenderPluginMPI(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-		: TransportTypeS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
+		: SenderPlugin(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
 
-    TransportMPIS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
+    SenderPluginMPI( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-            : TransportTypeS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
+            : SenderPlugin(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
 
 
     virtual int send(message_t* task, bool external) {
@@ -369,7 +369,7 @@ protected:
 #endif
 
 
-class TransportTCP: public TransportType {
+class ReceiverPluginTCP: public ReceiverPlugin {
 
 protected:
 
@@ -425,7 +425,7 @@ protected:
         
         sck2ChannelType[sck] = t;
         this->internalConnections += t == ChannelType::INT;
-        std::cout << "Done handshake with " << groupName << "\n";
+        // std::cout << "Done handshake with " << groupName << "\n";
         return 0;
     }
 
@@ -509,12 +509,12 @@ protected:
     }
 
 public:
-    TransportTCP(ff_endpoint handshakeAddr, size_t input_channels)
-		: TransportType(input_channels), handshakeAddr(handshakeAddr) {}
+    ReceiverPluginTCP(ff_endpoint handshakeAddr, size_t input_channels)
+		: ReceiverPlugin(input_channels), handshakeAddr(handshakeAddr) {}
 
 
     virtual void init(ff_monode_t<message_t>* data) {
-        receiver = (ff_dAreceiver*)data;
+        receiver = (ff_dMPreceiver*)data;
 
         this->_init();
 
@@ -582,7 +582,7 @@ public:
 
 protected:
     ff_endpoint                 handshakeAddr;
-    ff_dAreceiver*              receiver;
+    ff_dMPreceiver*              receiver;
 
     std::map<int, ChannelType>  sck2ChannelType;
     int                         listen_sck;
@@ -595,7 +595,7 @@ protected:
 };
 
 
-class TransportTCPS: public TransportTypeS {
+class SenderPluginTCP: public SenderPlugin {
 
 protected:
     std::map<int, unsigned int> socketsCounters;
@@ -761,17 +761,17 @@ protected:
 
 
 public:
-    TransportTCPS(std::pair<ChannelType, ff_endpoint> destEndpoint,
+    SenderPluginTCP(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-		: TransportTypeS(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
+		: SenderPlugin(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
 
-    TransportTCPS( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
+    SenderPluginTCP( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
-            : TransportTypeS(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
+            : SenderPlugin(destEndpoints_, gName, batchSize, messageOTF, internalMessageOTF) {}
 
 
     virtual int send(message_t* task, bool external) {
