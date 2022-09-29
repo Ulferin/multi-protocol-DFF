@@ -1,3 +1,18 @@
+/*
+ * Implementation of transport-specific components. Two implementations are
+ * provided. They represent the Margo-related implementation of the original
+ * FastFlow communication protocol.
+ * 
+ *      - Sender/ReceiverPluginRPC: implements FastFlow communication protocol
+ *                  by means of RPC calls using the Margo functionalities.
+ * 
+ * 
+ * Author:
+ *      Federico Finocchio
+ * 
+ * 
+ */
+
 #ifndef FF_DCOMM
 #define FF_DCOMM
 
@@ -41,13 +56,10 @@ protected:
 
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
         assert(*mid != MARGO_INSTANCE_NULL);
-        // margo_set_log_level(*mid, MARGO_LOG_TRACE);
 
         // Check if the listening address is the requested one
         char addr_self_string[128];
         get_self_addr(mid, addr_self_string);
-        // fprintf(stderr, "# accepting RPCs on address \"%s\"\n",
-        //     addr_self_string);
     }
 
 
@@ -85,7 +97,6 @@ protected:
         
         sck2ChannelType[sck] = t;
         if(t == ChannelType::INT) this->internalConnections++;
-        std::cout << "Done handshake with " << groupName << " - internal: " << this->internalConnections << "\n";
         return 0;
     }
 
@@ -194,7 +205,7 @@ public:
         }
     }
 
-    virtual int comm_listen() {
+    virtual int wait_msg() {
         if(this->_listen() == -1)
             return -1;
 
@@ -224,19 +235,19 @@ public:
 
 protected:
     std::vector<ff_endpoint_rpc*>   endRPC;
-    bool internal = false;
+    bool                            internal = false;
     int                             busy;
     std::vector<margo_instance_id*> mids;
     ABT_pool                        pool_e1;
     ABT_xstream                     xstream_e1;
 
-    ff_endpoint             handshakeAddr;
-    std::map<int, ChannelType> sck2ChannelType;
+    ff_endpoint                     handshakeAddr;
+    std::map<int, ChannelType>      sck2ChannelType;
 
-    int                     listen_sck;
-    int                     last_receive_fd = -1;
-    int                     fdmax;
-    fd_set                  set, tmpset;
+    int                             listen_sck;
+    int                             last_receive_fd = -1;
+    int                             fdmax;
+    fd_set                          set, tmpset;
 };
 
 
@@ -360,13 +371,10 @@ protected:
 
         *mid = margo_init_ext(address, MARGO_SERVER_MODE, &args);
         assert(*mid != MARGO_INSTANCE_NULL);
-        // margo_set_log_level(*mid, MARGO_LOG_TRACE);
 
         // Check if the listening address is the requested one
         char addr_self_string[128];
         get_self_addr(mid, addr_self_string);
-        // fprintf(stderr, "# accepting RPCs on address \"%s\"\n",
-            // addr_self_string);
     }
 
     void register_rpcs(margo_instance_id* mid) {
@@ -517,7 +525,7 @@ public:
     }
 
 
-    virtual int handshake(precomputedRT_t* rt) {
+    virtual int init(precomputedRT_t* rt) {
         for (auto& [ct, ep] : this->destEndpoints)
         {
             std::cout << "Trying to connect to: " << ep.address << "\n";
@@ -539,7 +547,6 @@ public:
                 if (k.first != ep.groupName) continue;
                 for(int dest : v) {
                     dest2Socket[std::make_pair(dest, k.second)] = sck;
-                    printf("[HSK]Putting %d:%d -> %d\n", dest, k.second, sck);
                 }
             }
 

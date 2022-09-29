@@ -1,6 +1,25 @@
-/* This is a generic interface used to provide protocol-specific functionalities
-to remotely connected FastFlow's nodes. It must be extended in order to implement
-the barely necessary functions to receive and ship data in the network. */
+/*
+ * Interface for the transport-specific components. Two different interfaces are
+ * provided:
+ * 
+ *      - ReceiverPlugin: implements the FastFlow communication protocol at the
+ *                        receiver side.
+ *      - SenderPlugin: implements the FastFlow communication protocol at the
+ *                      sender side
+ * 
+ * The functionalities are provided by means of transport-specific calls.
+ * Plugins will be orchestrated by the Manager object. They can be provided as a
+ * vector to each Manager in order to specify which protocols the Manager is going
+ * to accept. The functionalities implemented by the Plugins are mapped in the
+ * Manager to realize the communication protocol of original FastFlow distributed
+ * runtime.
+ * 
+ * Author:
+ *      Federico Finocchio
+ *
+ * 
+ * 
+ */
 
 #ifndef FF_DCOMP_I
 #define FF_DCOMP_I
@@ -17,9 +36,25 @@ class ReceiverPlugin {
 protected:
 
 public:
+    /**
+     * @brief Implementation of receiver-side handshake procedure requested by
+     * the FastFlow communication protocol.
+     */
     virtual void init(ff_monode_t<message_t>*) = 0;
-    virtual int comm_listen() = 0;
+
+    /**
+     * @brief Non-blocking implementation of receive functionalities. Used by the
+     * manager to poll on this component for pending messages. Must return the
+     * code specifying if a message is pending, or if connection has been closed.
+     */
+    virtual int wait_msg() = 0;
+
+    /**
+     * @brief Cleanup procedure for the current component. Must close all the
+     * listening endpoints created during the handshake process.
+     */
     virtual void finalize() = 0;
+
     virtual size_t getInternalConnections(){
         return this->internalConnections;
     }
@@ -42,10 +77,44 @@ class SenderPlugin {
 protected:
 
 public:
+    /**
+     * @brief Send implementation to ship data via the network to a ReceiverPlugin.
+     * Used internally by the Manager for each task received from the Sender node.
+     * 
+     * @param task task to be shipped over the network
+     * @param external whether the task comes from an external (true) or
+     * internal (false) channel
+     * @return int success (0) or failure (1)
+     */
     virtual int send(message_t* task, bool external) = 0;
+
+    /**
+     * @brief Cleanup procedure for the current component. Must close all the
+     * endpoints used for communications with a ReceiverPlugin.
+     * 
+     */
     virtual void finalize() = 0;
-    virtual int handshake(precomputedRT_t* rt) = 0;
+
+    /**
+     * @brief Implements the sender-side handshake procedure for the FastFlow
+     * communication protocol.
+     * 
+     * @param rt Routing table provided by the Manager. Represents the reachable
+     * nodes from this component.
+     * @return int return code, either 0 for success or -1 for failure
+     */
+    virtual int init(precomputedRT_t* rt) = 0;
+
+    /**
+     * @brief Notifies an external/internal node of reception of EOS message from
+     * the Sender side.
+     * 
+     * @param id id for the recipient
+     * @param external whether the EOS is external (true) or internal (false)
+     */
     virtual void notify(ssize_t id, bool external) = 0;
+
+    
     bool haveConnType(bool external) {
         return external ? haveExternal : haveInternal;
     }

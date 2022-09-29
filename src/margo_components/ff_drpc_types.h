@@ -2,12 +2,13 @@
 #define FF_DRPC_TYPES
 
 #include <margo.h>
-
 #include <ff/distributed/ff_network.hpp>
 
-// Endpoint extension for RPC compatibility. It acts like an endpoint for the
-// distributed version and only adds the possibility to specify the plugin and
-// protocol to be used 
+/**
+ * @brief Endpoint extension for RPC compatibility. It acts like an endpoint for the
+ * distributed version and only adds the possibility to specify the plugin and
+ * protocol to be used with Margo
+ */
 struct ff_endpoint_rpc : public ff_endpoint {
     // The protocol argument must be defined as a Mercury plugin+protocol string
     ff_endpoint_rpc(std::string addr, int port=-1, std::string protocol="ofi+tcp"):
@@ -121,8 +122,6 @@ hg_return_t hg_proc_ff_rpc_in_t(hg_proc_t proc, void* data) {
         }
         case HG_FREE:
         {
-            // TODO: check how to free memory here
-            // delete struct_data->task;
             break;
         }
     }

@@ -1,3 +1,24 @@
+/*
+ * Implementation of transport-specific components. Two implementations are
+ * provided. They represent adaptations to the original FastFlow distributed
+ * communication classes.
+ * 
+ *      - Sender/ReceiverPluginMPI: implements FastFlow communication protocol
+ *                  by means of MPI specific calls.
+ *      - Sender/ReceiverPluginTCP: implements FastFlow communication protocol
+ *                  by means of TCP specific calls.
+ * 
+ * 
+ * Author:
+ *      Federico Finocchio
+ *
+ * Based on the original work from:
+ *      Massimo Torquati
+ *      Nicolo' Tonci
+ * 
+ * 
+ */
+
 #ifndef FF_DCOMM_COMP
 #define FF_DCOMM_COMP
 
@@ -11,14 +32,25 @@
 
 using namespace ff;
 
+/* vvvvv MPI PLUGINS vvvvv */
 #ifndef DFF_EXCLUDE_MPI
 class ReceiverPluginMPI: public ReceiverPlugin {
+
 protected:
-    ff_dMPreceiver* receiver;        // FIXME: this should become a callback instead of whole object
-    std::set<int> internalRanks;
-    std::map<int, ChannelType> rank2ChannelType;
-    bool finalized = false;
-    size_t neos = 0;
+    virtual int handshakeHandler(){
+        int sz;
+        ChannelType ct;
+        MPI_Status status;
+        MPI_Probe(MPI_ANY_SOURCE, DFF_GROUP_NAME_TAG, MPI_COMM_WORLD, &status);
+        MPI_Get_count(&status, MPI_BYTE, &sz);
+        char* buff = new char [sz];
+        MPI_Recv(buff, sz, MPI_BYTE, status.MPI_SOURCE, DFF_GROUP_NAME_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&ct, sizeof(ct), MPI_BYTE, status.MPI_SOURCE, DFF_CHANNEL_TYPE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        rank2ChannelType[status.MPI_SOURCE] = ct;
+
+        return 0;
+    }
 
 public:
     ReceiverPluginMPI(size_t input_channels)
@@ -27,23 +59,20 @@ public:
     virtual void init(ff_monode_t<message_t>* data) {
         receiver = (ff_dMPreceiver*)data;
 
-        printf("Starting handshake with MPI\n");
         for(size_t i = 0; i < input_channels; i++)
             handshakeHandler();
-        printf("Ending handshake with MPI\n");
         
         this->internalConnections = std::count_if(std::begin(rank2ChannelType),
                                             std::end  (rank2ChannelType),
                                             [](std::pair<int, ChannelType> const &p) {return p.second == ChannelType::INT;});
     }
 
-    virtual int comm_listen() {
+    virtual int wait_msg() {
         MPI_Status status;
         if(neos < input_channels){
             
             int headersLen;
             int flag = 0;
-            // MPI_Probe(MPI_ANY_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &status);
             MPI_Iprobe(MPI_ANY_SOURCE, DFF_HEADER_TAG, MPI_COMM_WORLD, &flag, &status);
             if(flag == 0)
                 return 1;
@@ -116,25 +145,15 @@ public:
     }
 
     virtual void finalize() {
-        printf("Finalizing communicator.\n");
         this->finalized = true;
     }
 
 protected:
-    virtual int handshakeHandler(){
-        int sz;
-        ChannelType ct;
-        MPI_Status status;
-        MPI_Probe(MPI_ANY_SOURCE, DFF_GROUP_NAME_TAG, MPI_COMM_WORLD, &status);
-        MPI_Get_count(&status, MPI_BYTE, &sz);
-        char* buff = new char [sz];
-        MPI_Recv(buff, sz, MPI_BYTE, status.MPI_SOURCE, DFF_GROUP_NAME_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        MPI_Recv(&ct, sizeof(ct), MPI_BYTE, status.MPI_SOURCE, DFF_CHANNEL_TYPE_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-        rank2ChannelType[status.MPI_SOURCE] = ct;
-
-        return 0;
-    }
+    ff_dMPreceiver* receiver;        
+    std::set<int> internalRanks;
+    std::map<int, ChannelType> rank2ChannelType;
+    bool finalized = false;
+    size_t neos = 0;
     
 };
 
@@ -313,7 +332,7 @@ public:
             for(auto& b : bb.second) b->waitCompletion();
     }
 
-    virtual int handshake(precomputedRT_t* rt) {
+    virtual int init(precomputedRT_t* rt) {
         for(auto& [ct, ep]: this->destEndpoints){
             int rank = ep.getRank();
             bool isInternal = ct == ChannelType::INT;
@@ -367,7 +386,11 @@ protected:
 
 };
 #endif
+/* ^^^^^ MPI PLUGINS ^^^^^ */
 
+// ===========================
+
+/* vvvvv TCP PLUGINS vvvvv */
 
 class ReceiverPluginTCP: public ReceiverPlugin {
 
@@ -425,7 +448,6 @@ protected:
         
         sck2ChannelType[sck] = t;
         this->internalConnections += t == ChannelType::INT;
-        // std::cout << "Done handshake with " << groupName << "\n";
         return 0;
     }
 
@@ -529,9 +551,8 @@ public:
         fdmax = this->listen_sck;
     }
 
-    virtual int comm_listen() {
+    virtual int wait_msg() {
         if (neos < input_channels) {
-        // while(neos < input_channels){
             // copy the master set to the temporary
             tmpset = set;
             struct timeval wait_time = {.tv_sec=0, .tv_usec=100000};
@@ -582,7 +603,7 @@ public:
 
 protected:
     ff_endpoint                 handshakeAddr;
-    ff_dMPreceiver*              receiver;
+    ff_dMPreceiver*             receiver;
 
     std::map<int, ChannelType>  sck2ChannelType;
     int                         listen_sck;
@@ -598,13 +619,6 @@ protected:
 class SenderPluginTCP: public SenderPlugin {
 
 protected:
-    std::map<int, unsigned int> socketsCounters;
-    std::map<int, ff_batchBuffer> batchBuffers;
-    std::map<std::pair<int, ChannelType>, int> dest2Socket;
-    std::vector<int> internalSockets;
-    int last_rr_socket = -1;
-    int last_rr_socket_Internal = -1;
-
     int getMostFilledBufferSck(bool feedback){
         int sckMax = 0;
         int sizeMax = 0;
@@ -639,7 +653,6 @@ protected:
         return internalSockets[last_rr_socket_Internal];
     }
 
-
      int waitAckFrom(int sck){
         while (socketsCounters[sck] == 0){
             for(auto& [sck_, counter] : socketsCounters){
@@ -667,8 +680,6 @@ protected:
         }
         return 1;
     }
-
-
 
     virtual int handshakeHandler(const int sck, ChannelType ct) {
         size_t sz = htobe64(gName.size());
@@ -790,7 +801,7 @@ public:
     }
     
 
-    virtual int handshake(precomputedRT_t* rt) {
+    virtual int init(precomputedRT_t* rt) {
         FD_ZERO(&set);
         FD_ZERO(&tmpset);
 
@@ -907,7 +918,16 @@ public:
 		for(const auto& [sck, _] : socketsCounters) close(sck);
     }
 
+protected:
+    std::map<int, unsigned int> socketsCounters;
+    std::map<int, ff_batchBuffer> batchBuffers;
+    std::map<std::pair<int, ChannelType>, int> dest2Socket;
+    std::vector<int> internalSockets;
+    int last_rr_socket = -1;
+    int last_rr_socket_Internal = -1;
+
 };
 
+/* ^^^^^ TCP PLUGINS ^^^^^ */
 
 #endif //FFDCOMM

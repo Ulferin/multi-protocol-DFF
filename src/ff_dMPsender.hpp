@@ -30,11 +30,6 @@ public:
         return 0;
     }
 
-    void svc_end() {
-        printf("[SENDER] Received: %d\n", received);
-        // communicator->finalize();
-    }
-
     message_t *svc(message_t* task) {
         received++;
         if(communicator->send(task, true) == -1)
@@ -44,7 +39,6 @@ public:
     }
 
     void eosnotify(ssize_t id) {
-
         communicator->notify(id, true);
 
         if (++neos >= this->get_num_inchannels()) {
@@ -55,7 +49,7 @@ public:
 protected:
 
     // From ff_dsender
-    SenderManagerI*                  communicator;
+    SenderManagerI*                     communicator;
     size_t                              neos=0;
     int                                 nextExternal = 0, nextInternal = 0;
     int                                 coreid;
@@ -65,8 +59,9 @@ protected:
     std::map<int, int>                  internalDest2Socket;
     int                                 externalDests = 0, internalDests = 0;
 
-    int received = 0;
+    int                                 received = 0;
 };
+
 
 class ff_dMPsenderH: public ff_dMPsender {
 

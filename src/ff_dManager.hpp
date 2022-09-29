@@ -1,3 +1,11 @@
+/*
+ * Implementation of the Manager interface.
+ * 
+ * Author:
+ *      Federico Finocchio
+ * 
+ */
+
 #ifndef FF_DCOMM_MASTER
 #define FF_DCOMM_MASTER
 
@@ -12,11 +20,6 @@
 
 
 class ReceiverManager: public ReceiverManagerI {
-
-protected:
-    std::vector<ReceiverPlugin*>      components;
-    std::map<int, int>          routingTable;
-    bool                        end = false;
 
 public:
     ReceiverManager(std::vector<ReceiverPlugin*> components,
@@ -43,7 +46,7 @@ public:
 
                 if(!fin) {
                     int res;
-                    if((res = component->comm_listen()) == -1) {
+                    if((res = component->wait_msg()) == -1) {
                         error("Listening for messages\n");
                         return -1;     // In case one listener crashes, we close everything
                     }
@@ -76,6 +79,11 @@ public:
         return internalConn;
     }
 
+protected:
+    std::vector<ReceiverPlugin*>        components;
+    std::map<int, int>                  routingTable;
+    bool                                end = false;
+
 
 };
 
@@ -83,14 +91,6 @@ public:
 class SenderManager : public SenderManagerI {
 
 protected:
-    std::vector<std::pair<std::set<std::string>, SenderPlugin*>> components;
-    precomputedRT_t* rt;
-    std::map<std::pair<int, ff::ChannelType>, SenderPlugin*>        componentsMap;
-    int next_component = 0;
-    int received = 0;
-    std::map<std::pair<int, ff::ChannelType>, SenderPlugin*>::iterator it;
-    std::vector<std::pair<precomputedRT_t*, SenderPlugin*>> routedComponents;
-
     SenderPlugin* getNextComponent(bool external) {
         SenderPlugin* component;
         // if(it == componentsMap.end()) it = componentsMap.begin();
@@ -125,7 +125,7 @@ public:
         }
 
         for(auto& rtComp : routedComponents) {
-            if(rtComp.second->handshake(rtComp.first) == -1) {
+            if(rtComp.second->init(rtComp.first) == -1) {
                 error("Handhsake error.\n");
                 return -1;
             }
@@ -162,6 +162,15 @@ public:
             component->finalize();
         }
     }
+
+protected:
+    std::vector<std::pair<std::set<std::string>, SenderPlugin*>>    components;
+    precomputedRT_t*                                                rt;
+    std::map<std::pair<int, ff::ChannelType>, SenderPlugin*>        componentsMap;
+    int                                                             next_component = 0;
+    int                                                             received = 0;
+    std::map<std::pair<int, ff::ChannelType>, SenderPlugin*>::iterator it;
+    std::vector<std::pair<precomputedRT_t*, SenderPlugin*>>         routedComponents;
 
 
 };
