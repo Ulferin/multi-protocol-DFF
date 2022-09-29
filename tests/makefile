@@ -9,6 +9,27 @@ INCLUDE_PATH = ${HOME}/install/include
 FF_ROOT = ${HOME}/includes/fastflow/
 CEREAL_ROOT = ${HOME}/includes/cereal-1.3.2/include/
 
+# Options:
+# 
+#
+# MARGO           		Must be defined to properly compile RPC tests, like
+#						rpc_test.out and tcp_performance.out when using TRANS=TCPRPC
+#                       in busy-waiting loops
+#
+# TRANS  				Used in the performance tests to specify the type of test
+#						to run.
+#						For MPI tests, accepted values are:
+#							- MPISP: build the MPI test using original FastFlow MPI
+#							- MPIMP: build the MPI test using extension MPI implementation
+#						
+#						For TCP tests, accepted values are:
+#							- TCPSP: build the TCP test using original FastFlow TCP
+#							- TCPMP: build the TCP test using extension TCP implementation
+#							- TCPRPC: build the RCP test
+#
+#
+
+
 ifdef FF_ROOT
     INCS            += -I$(FF_ROOT)
 else

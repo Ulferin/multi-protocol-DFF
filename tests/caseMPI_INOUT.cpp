@@ -1,19 +1,43 @@
 /*
-  *                                 |-> Sink1 ->|  
- *                                 |           | 
- *           |-> Forwarder1 ->|    |-> Sink2 ->|
- *  Source ->|                | -> |           |-> StringPrinter
- *           |-> Forwarder2 ->|    |-> Sink3 ->|
- *                                 |           |
- *                                 |-> Sink4 ->|
- *          
+ * Application topology for the case study test, reported in thesis Chapter 4
+ *            --------------------------------------------------------
+ *           |                            |-> RNode1 ->|              |
+ *           |                            |            |              |
+ *  -----    |          |-> LNode1 ->|    |-> RNode2 ->|              |   -------
+ * | Src |-> | Broker ->|            | -> |            | -> Broker -> |-> | Snk |
+ *  -----    |          |-> LNode2 ->|    |-> RNode3 ->|              |   -------
+ * Laptop    |                            |            |              |     VPS
+ *           |                            |-> RNode4 ->|              |
+ *            --------------------------------------------------------
+ *                                    HPC8000
+ * 
+ *  G0: Src
+ *  G1: Broker
+ *  G2: LNode1, RNode1, RNode2
+ *  G3: LNode2, RNode3, RNode4
+ *  G4: Broker
+ *  G5: Snk
  *
  * 
- *  G0: Source
- *  G1: Forwarer1, Sink1, Sink2
- *  G2: Forwarder2, Sink2, Sink3
- *  G3: StringPrinter
+ * Builds 4 different distributed groups running in HPC8000 and connecting them
+ * with MPI transport for internal connections. Uses TCP connection in the Broker
+ * nodes in order to receive and send data from/to the network.
  *
+ *
+ * 
+ * Execution example:
+ * mpirun --hostfile myhostsINOUT -n 4 --map-by node sh -c './caseMPI_INOUT.out <executionID> <ntasks> <msgsize> <ms_wait_LNode> <ms_wait_RNode>'
+ * 
+ * NOTE: to properly run this test the exection must be paired with the caseTCP_INOUT.out
+ *       ./caseTCP_INOUT.out <id> <ntasks> <msg_size> <ms_wait_LNode> <ms_wait_RNode>
+ * 
+ * Author:
+ *      Federico Finocchio
+ * 
+ * Based on the original work from:
+ *      Massimo Torquati
+ *      Nicolo' Tonci
+ * 
  */
 
 #include <iostream>
@@ -280,7 +304,6 @@ int main(int argc, char*argv[]){
         gFarm.add_collector(new ff_dMPsender(sendMaster));
 
         gFarm.add_workers({new WrapperINOUT(new Fwd(), 0, 1, 0, true)});
-        // gFarm.cleanup_collector();
         gFarm.run_and_wait_end();
         if (MPI_Finalize() != MPI_SUCCESS) abort();
         return 0;

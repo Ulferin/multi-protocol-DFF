@@ -1,19 +1,43 @@
 /*
-  *                                 |-> Sink1 ->|  
- *                                 |           | 
- *           |-> Forwarder1 ->|    |-> Sink2 ->|
- *  Source ->|                | -> |           |-> StringPrinter
- *           |-> Forwarder2 ->|    |-> Sink3 ->|
- *                                 |           |
- *                                 |-> Sink4 ->|
+ * Application topology for performance test, reported in thesis Chapter 4
+ *
+ *                             |-> RNode1 ->|  
+ *                             |            | 
+ *           |-> LNode1 ->|    |-> RNode2 ->|
+ *  Src ->   |            | -> |            |-> Snk
+ *           |-> LNode2 ->|    |-> RNode3 ->|
+ *                             |            |
+ *                             |-> RNode4 ->|
  *          
  *
  * 
- *  G0: Source
- *  G1: Forwarer1, Sink1, Sink2
- *  G2: Forwarder2, Sink2, Sink3
- *  G3: StringPrinter
+ *  G0: Src
+ *  G1: LNode1, Rnode1, Rnode2
+ *  G2: LNode2, RNode3, RNode4
+ *  G3: Snk
  *
+ * 
+ * Builds 4 different distributed groups connecting them with MPI transport.
+ * Three version are provided:
+ *   - MPISP: original single protocol implementation of FastFlow MPI nodes,
+ *            used as a baseline to compare performances;
+ *   - MPIMP: extended multi-protocol implementation of the MPI component
+ *   - MPIMIX: mixed MPI and TCP communication in the same MPI job.
+ *
+ * 
+ * Execution example for TCPSP version:
+ * mpirun -n 4 --hostfile myhosts --map-by node sh -c "./MPISP_performance.out 0 <ntasks> <msgsize> <lmswait> <rmswait>"
+ * 
+ * NOTE: to properly run this test the test_mpi.sh can be taken as a guide.
+ *       Four different runs must be performed, using group IDs from 3 to 0.
+ * 
+ * Author:
+ *      Federico Finocchio
+ * 
+ * Based on the original work from:
+ *      Massimo Torquati
+ *      Nicolo' Tonci
+ * 
  */
 
 #include <iostream>
