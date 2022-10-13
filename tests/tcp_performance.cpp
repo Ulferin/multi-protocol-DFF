@@ -270,22 +270,22 @@ int main(int argc, char*argv[]){
 	printf("checkdata = %d\n", check);
 
 
-    ff_endpoint g1("172.16.34.2", 49001);
+    ff_endpoint g1("127.0.0.1", 49001);
     g1.groupName = "G1";
 
-    ff_endpoint g2("172.16.34.3", 49002);
+    ff_endpoint g2("127.0.0.1", 49002);
     g2.groupName = "G2";
 
-    ff_endpoint g3("172.16.34.4", 49003);
+    ff_endpoint g3("127.0.0.1", 49003);
     g3.groupName = "G3";
 
     #if defined(TCPRPC)
     /* --- RPC ENDPOINTS --- */
-    ff_endpoint_rpc toG1_rpc("172.16.34.2", 49004, "ofi+sockets");
+    ff_endpoint_rpc toG1_rpc("127.0.0.1", 49004, "ofi+sockets");
 
-    ff_endpoint_rpc toG2_rpc("172.16.34.3", 49005, "ofi+sockets");
+    ff_endpoint_rpc toG2_rpc("127.0.0.1", 49005, "ofi+sockets");
 
-    ff_endpoint_rpc toG3_rpc("172.16.34.4", 49006, "ofi+sockets");
+    ff_endpoint_rpc toG3_rpc("127.0.0.1", 49006, "ofi+sockets");
     /* --- RPC ENDPOINTS --- */
     #endif
 

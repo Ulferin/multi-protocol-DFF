@@ -134,7 +134,7 @@ int main(int argc, char*argv[]){
     ff_farm gFarm;
     ff_a2a a2a;
     std::map<std::pair<std::string, ChannelType>, std::vector<int>> rt;
-    if (myrank == 5){
+    if (myrank == 0){
         rt[std::make_pair(g1.groupName, ChannelType::FWD)] = std::vector<int>({0});
         rt[std::make_pair(g2.groupName, ChannelType::FWD)] = std::vector<int>({1});
         
@@ -147,7 +147,7 @@ int main(int argc, char*argv[]){
         gFarm.run_and_wait_end();
         if (MPI_Finalize() != MPI_SUCCESS) abort();
         return 0;
-    } else if (myrank == 0){
+    } else if (myrank == 1){
         rt[std::make_pair(g2.groupName, ChannelType::INT)] = std::vector<int>({1});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
@@ -164,7 +164,7 @@ int main(int argc, char*argv[]){
         auto sink = new Sink(0);
         a2a.add_secondset<ff_node>({new ff_comb(new CollectorAdapter(sink, {0}, true), new WrapperOUT(new ForwarderNode(sink->serializeF, sink->freetaskF), 0, 1, 0, true)), new SquareBoxRight});
 
-    } else if (myrank == 1) {
+    } else if (myrank == 2) {
         rt[std::make_pair(g1.groupName, ChannelType::INT)] = std::vector<int>({0});
         rt[std::make_pair(g3.groupName, ChannelType::FWD)] = std::vector<int>({0});
 
