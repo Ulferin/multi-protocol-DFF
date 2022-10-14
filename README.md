@@ -45,7 +45,8 @@ A shift toward distributed computing is being recorded in order to address stora
 We provide bash scripts to test the implemented functionalities and get statistics on their execution. The implemented functionalities are an extension of the existing FastFlow distributed runtime classes. The tests can be compiled using the provided `makefile` in the `tests` folder. No additional requirements are needed more than the FastFlow library for both TCP and MPI tests. In order to test Margo-related components, the requirements are related to the dependencies as specified in [Margo Github repository](https://github.com/mochi-hpc/mochi-margo).
 
 The sample application is relative to the FastFlow distributed concurrency graph as follows:
-<img src="https://eu2.contabostorage.com/7b9b9863ab44439fbf94633415e63c03:university/tesi%2FCommunication%20-%20distmem.png" alt="distributed-memory-app" width="400"/>
+<img src="https://user-images.githubusercontent.com/30932678/195853410-088252b9-310a-4c7d-b659-42b3d9f7e1d5.png" alt="dist-mem-app" width="700"
+/>
 
 ### Performance Tests
 
@@ -77,10 +78,10 @@ In the following, the main results we obtained while testing the overhead introd
 
 - increasing message size, with 100k total messages
 - increasing number of messages, with fixed 1Kb message size
-
-<img src="https://eu2.contabostorage.com/7b9b9863ab44439fbf94633415e63c03:university/tesi%2FcomparisonMPI.png" alt="mpi-overhead" width="450"/>
-<img src="https://eu2.contabostorage.com/7b9b9863ab44439fbf94633415e63c03:university/tesi%2FcomparisonTCP.png" alt="tcp-overhead" width="450"/>
-
+<p float="left">
+<img src="https://user-images.githubusercontent.com/30932678/195853425-b85d530d-cdd4-4306-b3e6-cc48aeb54c1b.svg" alt="tcp-overhead" width="500"/>
+<img src="https://user-images.githubusercontent.com/30932678/195853427-2b32c160-7f1e-4c25-815d-f4c5a7091519.png" alt="mpi-overhead" width="500"/>
+</p>
 
 ### Protocol-specific tests
 
@@ -102,8 +103,9 @@ $ ./test_run rpc 10000 "ofi+sockets" 8000
 
 The execution will produce a file which can be used to check the statistics of the current execution, only for the last stage in the sample application. All the outputs are written in a `.txt` file.
 
+
 ### Case-study test
 This test refers to the analyzed case study application, connecting different computing environments such as a personal laptop, an HPC cluster and a publicly reachable virtual machine. The application structure is as follows:
-<img src="https://eu2.contabostorage.com/7b9b9863ab44439fbf94633415e63c03:university/tesi%2FCommunication%20-%20case.png" alt="case-study-app" width="900"/>
+![Communication - case](https://user-images.githubusercontent.com/30932678/195853465-647e5053-f7a1-41b0-9b0f-5443591c218e.png)
 
 The case-study application shows the effective use and functionality of the presented multi-protocol implementation. Two protocols are used by means of a single programming framework. The input/output connections toward/from the HPC cluster are performed via TCP due to internal limitations on the reachability of the cluter nodes.
