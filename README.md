@@ -45,7 +45,7 @@ A shift toward distributed computing is being recorded in order to address stora
 We provide bash scripts to test the implemented functionalities and get statistics on their execution. The implemented functionalities are an extension of the existing FastFlow distributed runtime classes. The tests can be compiled using the provided `makefile` in the `tests` folder. No additional requirements are needed more than the FastFlow library for both TCP and MPI tests. In order to test Margo-related components, the requirements are related to the dependencies as specified in [Margo Github repository](https://github.com/mochi-hpc/mochi-margo).
 
 The sample application is relative to the FastFlow distributed concurrency graph as follows:
-![distributed-memory-app](https://www.amazon.it/photos/share/vzaxAh9cY13XwPYkMUC0ATwJVUM4LKFwisRbXNZkY47)
+<img src="https://eu2.contabostorage.com/7b9b9863ab44439fbf94633415e63c03:university/tesi%2FCommunication%20-%20distmem.png" alt="distributed-memory-app" width="400"/>
 
 ### Performance Tests
 
@@ -78,8 +78,8 @@ In the following, the main results we obtained while testing the overhead introd
 - increasing message size, with 100k total messages
 - increasing number of messages, with fixed 1Kb message size
 
-![mpi-overhead](https://www.amazon.it/photos/share/bDf4uw6rcjAbnXQM3yrhJ0chRHCkkiXGriq1v2guDrL)
-![tcp-overhead](https://www.amazon.it/photos/share/jFwITkWP4TDkfdOPFHwGfo2KaP2I4BGh3eSfP2Wq8Xo)
+<img src="https://eu2.contabostorage.com/7b9b9863ab44439fbf94633415e63c03:university/tesi%2FcomparisonMPI.png" alt="mpi-overhead" width="450"/>
+<img src="https://eu2.contabostorage.com/7b9b9863ab44439fbf94633415e63c03:university/tesi%2FcomparisonTCP.png" alt="tcp-overhead" width="450"/>
 
 
 ### Protocol-specific tests
@@ -104,6 +104,6 @@ The execution will produce a file which can be used to check the statistics of t
 
 ### Case-study test
 This test refers to the analyzed case study application, connecting different computing environments such as a personal laptop, an HPC cluster and a publicly reachable virtual machine. The application structure is as follows:
-![case-study-app](https://www.amazon.it/photos/share/nt3VygbUBsC19Dc3E6f525LEK5cP43NfPzo0QTcQYZl)
+<img src="https://eu2.contabostorage.com/7b9b9863ab44439fbf94633415e63c03:university/tesi%2FCommunication%20-%20case.png" alt="case-study-app" width="900"/>
 
 The case-study application shows the effective use and functionality of the presented multi-protocol implementation. Two protocols are used by means of a single programming framework. The input/output connections toward/from the HPC cluster are performed via TCP due to internal limitations on the reachability of the cluter nodes.
