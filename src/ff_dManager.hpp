@@ -22,6 +22,15 @@
 class ReceiverManager: public ReceiverManagerI {
 
 public:
+    /**
+     * @brief Construct a new Receiver Manager object.
+     * 
+     * @param components vector of ReceiverPlugin used for the remote
+     * communications between the input-connected distributed groups.
+     * @param routingTable routing table containing the mapping between the
+     * original ID of the local nodes and the current ID after the partitioning
+     * of the concurrency graph.
+     */
     ReceiverManager(std::vector<ReceiverPlugin*> components,
         std::map<int, int> routingTable = {std::make_pair(0,0)})
           :components(std::move(components)), routingTable(routingTable){}
@@ -104,6 +113,14 @@ protected:
     }
 
 public:
+    /**
+     * @brief Construct a new Sender Manager object.
+     * 
+     * @param components vector of String-SenderPlugin pairs used for the remote
+     * communications between the output-connected distributed groups.
+     * @param rt pre-computed routing table containing reachable destinations in
+     * each of the remotely connected groups.
+     */
     SenderManager(
         std::vector<std::pair<std::set<std::string>, SenderPlugin*>> components,
         precomputedRT_t* rt)

@@ -53,6 +53,12 @@ protected:
     }
 
 public:
+    /**
+     * @brief Construct a new Receiver MPI plugin object.
+     * 
+     * @param input_channels number of input connections this specific plugin
+     * expects to receive.
+     */
     ReceiverPluginMPI(size_t input_channels)
 		: ReceiverPlugin(input_channels) {}
 
@@ -292,12 +298,34 @@ protected:
     }
 
 public:
+    /**
+     * @brief Construct a new Sender TCP plugin object. 
+     * 
+     * @param destEndpoint pair of ChannelType and ff_endpoint specifying the
+     * remote endpoint used for remote output connection. This endpoint will be
+     * used for all the output messages of this specific plugin.
+     * @param gName group which this plugin is part of.
+     * @param batchSize amount of messages to wait before sending a batch.
+     * @param messageOTF amount of messages before ACK is checked.
+     * @param internalMessageOTF amount of internal messages before ACK is checked.
+     */
     SenderPluginMPI(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
 		: SenderPlugin(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
 
+    /**
+     * @brief Construct a new Sender TCP plugin object.
+     * 
+     * @param destEndpoints_ list of pairs of ChannelType and ff_endpoint specifying
+     * the remote endpoints used for remote output connections. Each endpoint will
+     * be selected based on the type of message and the ID of the specific task.
+     * @param gName group which this plugin is part of.
+     * @param batchSize amount of messages to wait before sending a batch.
+     * @param messageOTF amount of messages before ACK is checked.
+     * @param internalMessageOTF amount of internal messages before ACK is checked. 
+     */
     SenderPluginMPI( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
@@ -531,6 +559,16 @@ protected:
     }
 
 public:
+
+    /**
+     * @brief Construct a new Receiver TCP plugin object.
+     * 
+     * @param handshakeAddr endpoint used for the handshake procedure.
+     * The current plugin will listen over the specified address for incoming
+     * connections.
+     * @param input_channels number of input connections this specific plugin
+     * expects to receive.
+     */
     ReceiverPluginTCP(ff_endpoint handshakeAddr, size_t input_channels)
 		: ReceiverPlugin(input_channels), handshakeAddr(handshakeAddr) {}
 
@@ -772,12 +810,34 @@ protected:
 
 
 public:
+    /**
+     * @brief Construct a new Sender TCP plugin object. 
+     * 
+     * @param destEndpoint pair of ChannelType and ff_endpoint specifying the
+     * remote endpoint used for remote output connection. This endpoint will be
+     * used for all the output messages of this specific plugin.
+     * @param gName group which this plugin is part of.
+     * @param batchSize amount of messages to wait before sending a batch.
+     * @param messageOTF amount of messages before ACK is checked.
+     * @param internalMessageOTF amount of internal messages before ACK is checked.
+     */
     SenderPluginTCP(std::pair<ChannelType, ff_endpoint> destEndpoint,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
         int internalMessageOTF = DEFAULT_INTERNALMSG_OTF)
 		: SenderPlugin(destEndpoint, gName, batchSize, messageOTF, internalMessageOTF) {}
 
+    /**
+     * @brief Construct a new Sender TCP plugin object.
+     * 
+     * @param destEndpoints_ list of pairs of ChannelType and ff_endpoint specifying
+     * the remote endpoints used for remote output connections. Each endpoint will
+     * be selected based on the type of message and the ID of the specific task.
+     * @param gName group which this plugin is part of.
+     * @param batchSize amount of messages to wait before sending a batch.
+     * @param messageOTF amount of messages before ACK is checked.
+     * @param internalMessageOTF amount of internal messages before ACK is checked. 
+     */
     SenderPluginTCP( std::vector<std::pair<ChannelType,ff_endpoint>> destEndpoints_,
         std::string gName = "",
         int batchSize = DEFAULT_BATCH_SIZE, int messageOTF = DEFAULT_MESSAGE_OTF,
